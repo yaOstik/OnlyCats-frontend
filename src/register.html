@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Реєстрація - OnlyCats</title>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white rounded-2xl shadow-xl flex w-full max-w-4xl overflow-hidden">
+        
+        <div class="w-1/2 hidden md:block relative">
+            <img src="https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Милий кіт" class="object-cover w-full h-full">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end p-8">
+                <h3 class="text-white text-2xl font-bold">Найкраще місце для котиків та їхніх людей.</h3>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/2 p-8 md:p-12">
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Приєднуйся до OnlyCats 🐾</h2>
+                <p class="text-gray-500">Створи акаунт, щоб ділитися пухнастими моментами.</p>
+            </div>
+
+            <form action="#" method="POST" class="space-y-5">
+                <div>
+                    <label class="block text-gray-700 font-medium mb-1">Ім'я користувача</label>
+                    <input type="text" placeholder="Наприклад, Мурчик" class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:outline-none focus:bg-white focus:border-orange-500 transition duration-200">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-medium mb-1">Електронна пошта</label>
+                    <input type="email" placeholder="cat@example.com" class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:outline-none focus:bg-white focus:border-orange-500 transition duration-200">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-medium mb-1">Пароль</label>
+                    <input type="password" placeholder="••••••••" class="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 focus:outline-none focus:bg-white focus:border-orange-500 transition duration-200">
+                </div>
+
+                <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md hover:shadow-lg transition duration-200 mt-4">
+                    Створити акаунт
+                </button>
+            </form>
+
+            <div class="mt-6 text-center">
+                <p class="text-gray-600">Вже маєте акаунт? <a href="#" class="text-orange-500 hover:underline font-medium">Увійти</a></p>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

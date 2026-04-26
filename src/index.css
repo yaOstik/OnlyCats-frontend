@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Важливо для fixed sidebar */
+body {
+  margin: 0;
+}
