@@ -773,27 +773,6 @@ export default function App() {
                 </div>
             </div>
         )}
-
-        {/* --- ПЛАШКА: СЮРПРИЗ ДЛЯ КАТРУСІ (При логіні) --- */}
-        {showSurprise && (
-            <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-opacity duration-1000">
-                <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    {[...Array(25)].map((_, i) => (
-                        <div key={i} className="absolute text-red-500/40 animate-pulse" style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, fontSize: `${Math.random() * 20 + 10}px`, animationDuration: `${Math.random() * 3 + 2}s`, animationDelay: `${Math.random() * 2}s` }}>❤</div>
-                    ))}
-                </div>
-                <div className="relative flex flex-col items-center animate-[bounce_3s_infinite] z-10">
-                    <svg className="w-48 h-48 text-red-500 drop-shadow-[0_0_60px_rgba(239,68,68,0.9)] animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
-                    <h1 className="mt-8 text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-red-500 to-rose-400 text-center px-4 drop-shadow-2xl">
-                        Дуже кохаю тебе, моє сонечко &lt;3
-                    </h1>
-                </div>
-                <button onClick={() => { setShowSurprise(false); setActiveTab('home'); }} className="mt-16 px-8 py-4 bg-red-500/20 hover:bg-red-500/40 border-2 border-red-500/50 text-red-100 rounded-full font-bold tracking-widest uppercase transition-all hover:scale-110 backdrop-blur-sm z-10 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
-                    Перейти до котиків 🐾
-                </button>
-            </div>
-        )}
-
     </div>
   );
 }
