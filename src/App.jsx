@@ -12,9 +12,11 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('token'));
 
-  // --- СТЕЙТИ ДЛЯ ПЛАШОК ТА СЮРПРИЗІВ ---
+  // --- СТЕЙТИ ДЛЯ ПЛАШОК ---
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showSurprise, setShowSurprise] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [welcomeTitle, setWelcomeTitle] = useState('');
+  const [welcomeDesc, setWelcomeDesc] = useState('');
 
   const BASE_URL = 'https://7fy5ddq0g2.execute-api.eu-north-1.amazonaws.com/Prod';
 
@@ -47,15 +49,17 @@ export default function App() {
 
       setIsLoggedIn(true);
 
-      // ПЕРЕВІРКА НА ПОШТУ КОХАНОЇ
-      if (authMode === 'login' && authEmail.toLowerCase() === 'kateryna.peleshchyshyn@gmail.com') {
-          setShowSurprise(true);
-          setAuthEmail(''); setAuthPassword(''); setAuthName('');
+      // --- ЛОГІКА НОВОЇ ПЛАШКИ ВІТАННЯ ---
+      if (authMode === 'login') {
+          setWelcomeTitle('Мур-р-р! З поверненням!');
+          setWelcomeDesc('Твій персональний котячий рай сумував за тобою. Твої улюблені хвостики вже чекають на лайки!');
       } else {
-          alert(authMode === 'login' ? 'Ви успішно увійшли! 🐾' : 'Реєстрація успішна! 🐾');
-          setAuthEmail(''); setAuthPassword(''); setAuthName('');
-          setActiveTab('home');
+          setWelcomeTitle('Ласкаво просимо у зграю!');
+          setWelcomeDesc('Тепер ти офіційно член найпухнастішої спільноти в інтернеті. Готуйся до безлічі "Няв"!');
       }
+
+      setShowWelcomeModal(true); // Відкриваємо красиву плашку
+      setAuthEmail(''); setAuthPassword(''); setAuthName('');
 
     } catch (error) {
       console.error('Auth error:', error);
@@ -247,7 +251,6 @@ export default function App() {
     setShowAdForm(false);
   };
 
-
   return (
     <div className="flex h-screen bg-[#f4f4f5] font-sans relative">
 
@@ -373,7 +376,7 @@ export default function App() {
         </div>
 
         {/* ГОЛОВНА ЗОНА */}
-        <div className="flex-1 flex flex-col items-center p-6 md:p-8 overflow-y-auto w-full">
+       <div className="flex-1 flex flex-col items-center px-0 py-6 pb-24 sm:px-6 md:p-8 md:pb-8 overflow-y-auto w-full">
 
             {/* --- СТРІЧКА ПОСТІВ --- */}
             {activeTab === 'home' && (
@@ -382,8 +385,8 @@ export default function App() {
                     {feedPosts.map((post) => (
                         <article
                             key={post.id}
-                            className="bg-white rounded-[32px] shadow-sm border border-gray-100 w-full overflow-hidden flex flex-col transition-all hover:shadow-md hover:-translate-y-1 hover:border-[#bf04ff]/30"
-                        >
+                            className="bg-white rounded-none sm:rounded-[32px] shadow-sm border-y border-x-0 sm:border-x border-gray-100 w-full overflow-hidden flex flex-col transition-all hover:shadow-md hover:-translate-y-1 hover:border-[#bf04ff]/30 mb-4 sm:mb-0"
+                         >
                             {/* Шапка поста */}
                             <div className="p-5 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -659,7 +662,7 @@ export default function App() {
             {activeTab === 'auth' && (
                 <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 w-full max-w-md m-auto">
                     <div className="flex justify-center mb-6">
-                        {/* НОВИЙ ЛОГОТИП ДЛЯ ФОРМИ ВХОДУ (Лапка) */}
+                        {/* ЛОГОТИП ФОРМИ ВХОДУ (Лапка) */}
                         <svg className="w-14 h-14 text-[#bf04ff] drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
                         </svg>
@@ -743,7 +746,7 @@ export default function App() {
 
         </div>
 
-        {/* --- ПЛАШКА: КАТРУСЯ ЗАБОРОНЯЄ (Для гостей) --- */}
+        {/* --- ПЛАШКА: ЗАБОРОНЯЄ (Для гостей) --- */}
         {showAuthModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl relative animate-[bounce-in_0.5s_ease-out]">
@@ -758,8 +761,8 @@ export default function App() {
                         </div>
                         <h3 className="text-2xl font-black text-gray-900 mb-3">Обережно!</h3>
                         <p className="text-gray-600 mb-8 font-medium leading-relaxed text-lg px-2">
-                            <span className="text-rose-500 font-bold">Катруся забороняє</span> подібні дії не зараєстрованим користувачам, вона буде злитись!
-                            <br/><br/>Зараєструйтесь чи увійдіть, для початку!
+                            <span className="text-rose-500 font-bold">Адміністрація забороняє</span> подібні дії не зараєстрованим користувачам, вона буде злитись!
+                            <br/><br/>Зареєструйтесь чи увійдіть, для початку!
                         </p>
                         <div className="flex w-full gap-3">
                             <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('register'); }} className="flex-1 bg-white hover:bg-gray-50 border-2 border-gray-200 text-gray-700 font-bold py-4 px-4 rounded-xl transition-colors">
@@ -773,6 +776,47 @@ export default function App() {
                 </div>
             </div>
         )}
+
+        {/* --- НОВА КРЕАТИВНА ПЛАШКА ВІТАННЯ --- */}
+        {showWelcomeModal && (
+            <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gray-950/60 backdrop-blur-sm p-4 animate-[fade-in_0.3s_ease-out]">
+                <div className="bg-white rounded-[32px] p-10 max-w-md w-full shadow-2xl border border-gray-100 flex flex-col items-center text-center animate-[scale-in_0.4s_ease-out]">
+                    <div className="relative mb-8">
+                        <div className="absolute inset-0 rounded-full bg-[#bf04ff] opacity-20 blur-2xl animate-pulse"></div>
+                        <div className="relative w-24 h-24 bg-[#fdf4ff] rounded-full border-4 border-[#bf04ff]/20 flex items-center justify-center shadow-inner">
+                            <svg className="w-12 h-12 text-[#bf04ff]" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                                <path d="M12 13.5c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3-2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5S15 11.83 15 11zm-6 0c0-.83-.67-1.5-1.5-1.5S6 10.17 6 11s.67 1.5 1.5 1.5S9 11.83 9 11zm3-4c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5S12 7.83 12 7z" fill="white"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <h2 className="text-3xl font-black text-gray-900 mb-3 tracking-tight">{welcomeTitle}</h2>
+                    <p className="text-gray-600 mb-10 text-lg leading-relaxed px-2 font-medium">{welcomeDesc}</p>
+                    <button onClick={() => { setShowWelcomeModal(false); setActiveTab('home'); }} className="w-full bg-[#bf04ff] hover:bg-[#a103d8] text-white font-bold py-4.5 px-6 rounded-2xl transition-all shadow-lg shadow-purple-500/30 flex items-center justify-center gap-3 text-lg hover:scale-105 active:scale-95">
+                        Погнати до котиків 🐾
+                    </button>
+                </div>
+            </div>
+        )}
+{/* --- МОБІЛЬНЕ НИЖНЄ МЕНЮ (Тільки для телефонів) --- */}
+        <div className="md:hidden fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 flex justify-around items-center p-3 z-50">
+            {/* Кнопка 1: Стрічка */}
+            <button onClick={() => setActiveTab('home')} className={`p-2 ${activeTab === 'home' ? 'text-[#bf04ff]' : 'text-gray-400'}`}>
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            </button>
+
+            {/* ТУТ ДОДАШ ІНШІ КНОПКИ ПО АНАЛОГІЇ (Огляд, Профіль і т.д.) */}
+
+            {/* Центральна кнопка "Додати" (зробимо її випуклою) */}
+            <button
+                onClick={() => { if(!isLoggedIn){setShowAuthModal(true); return;} setActiveTab('addCat'); }}
+                className="bg-[#bf04ff] text-white p-3 rounded-full shadow-lg shadow-purple-500/30 -mt-6 border-4 border-[#f4f4f5]"
+            >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+
+            {/* ТУТ ДОДАШ ЩЕ 2 КНОПКИ */}
+        </div>
     </div>
   );
 }
