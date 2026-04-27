@@ -376,11 +376,11 @@ export default function App() {
         </div>
 
         {/* ГОЛОВНА ЗОНА */}
-       <div className="flex-1 flex flex-col items-center px-0 py-6 pb-24 sm:px-6 md:p-8 md:pb-8 overflow-y-auto w-full">
+       <div className="flex-1 flex flex-col items-center pt-3 px-1 pb-24 py-6 pb-24 sm:px-6 md:p-8 md:pb-8 overflow-y-auto w-full">
 
             {/* --- СТРІЧКА ПОСТІВ --- */}
             {activeTab === 'home' && (
-                <div className="w-full max-w-[540px] flex flex-col gap-10 pb-12 mt-2">
+                <div className="w-full max-w-[540px] flex flex-col pb-12 ">
                     {/* --- МОБІЛЬНА ШАПКА (Тільки для телефону) --- */}
                     <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-2">
 
