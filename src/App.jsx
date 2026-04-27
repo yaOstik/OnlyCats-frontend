@@ -833,6 +833,26 @@ export default function App() {
             </button>
 
         </div>
+
+        {/* --- МОБІЛЬНА ШАПКА (Тільки для телефону) --- */}
+                    <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mb-2">
+
+                        {/* Логотип зліва */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <svg className="w-8 h-8 text-[#bf04ff]" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
+                            </svg>
+                            <h1 className="text-xl font-black text-gray-900 tracking-tight">OnlyCats</h1>
+                        </div>
+
+                        {/* Плашка, що розтягується вправо */}
+                        <div className="flex-1 ml-4 bg-[#fdf4ff] border border-purple-100 rounded-xl py-2 px-3 flex items-center justify-center overflow-hidden">
+                            <span className="text-[#bf04ff] font-bold text-sm truncate">
+                                {isLoggedIn ? `Привіт, ${authName || 'Котику'}! 🐾` : 'Свіжі пухнасті новини 🔥'}
+                            </span>
+                        </div>
+
+                    </div>
     </div>
   );
 }
