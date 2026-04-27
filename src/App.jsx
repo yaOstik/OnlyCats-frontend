@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react'; // Виправлено імпорт
+import React, { useState, useEffect } from 'react';
 import Ads from './Ads';
 import AddCat from './AddCat';
 
-export default function App() { // Відкриваємо дужку тут
+export default function App() {
   const [activeTab, setActiveTab] = useState('home');
-  // ... весь інший код стейтів та функцій ...
   const [authMode, setAuthMode] = useState('login');
 
   // --- СТЕЙТИ ДЛЯ АВТОРИЗАЦІЇ ---
@@ -48,7 +47,7 @@ export default function App() { // Відкриваємо дужку тут
 
       setIsLoggedIn(true);
 
-      // ПЕРЕВІРКА НА ПОШТУ КОХАНОЇ (Сюрприз без музики)
+      // ПЕРЕВІРКА НА ПОШТУ КОХАНОЇ
       if (authMode === 'login' && authEmail.toLowerCase() === 'kateryna.peleshchyshyn@gmail.com') {
           setShowSurprise(true);
           setAuthEmail(''); setAuthPassword(''); setAuthName('');
@@ -66,151 +65,135 @@ export default function App() { // Відкриваємо дужку тут
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('liked_current_cat');
-    setHasLiked(false);
     setIsLoggedIn(false);
     setActiveTab('home');
     window.location.reload();
   };
 
-  // --- СТАН ДЛЯ ЛАЙКІВ ---
-  const [likes, setLikes] = useState(0);
-  const [hasLiked, setHasLiked] = useState(false);
-
-  const CAT_ID = 1;
-  const ENDPOINT_GET_LIKES = `${BASE_URL}/likes/${CAT_ID}`;
-  const ENDPOINT_POST_LIKE = `${BASE_URL}/likes/`;
-  const ENDPOINT_DELETE_LIKE = `${BASE_URL}/likes/${CAT_ID}`;
-
-  // --- ЗАВАНТАЖЕННЯ ЛАЙКІВ ---
-  useEffect(() => {
-    const fetchLikes = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const headers = {};
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch(ENDPOINT_GET_LIKES, { headers });
-
-        if (!response.ok) {
-            setLikes(0);
-            return;
-        }
-
-        const data = await response.json();
-
-        if (Array.isArray(data)) {
-            setLikes(data.length);
-        } else if (data !== undefined && data !== null) {
-          let newLikes = 0;
-          if (typeof data === 'number') newLikes = data;
-          else if (data.likes_count !== undefined) newLikes = Number(data.likes_count);
-          else if (data.likes !== undefined) newLikes = Number(data.likes);
-          else newLikes = Number(data);
-          setLikes(isNaN(newLikes) ? 0 : newLikes);
-        }
-      } catch (error) {
-        console.error('Помилка завантаження лайків:', error);
-        setLikes(0);
-      }
-    };
-
-    fetchLikes();
-
-    const alreadyLiked = localStorage.getItem('liked_current_cat') === 'true';
-    if (alreadyLiked) {
-      setHasLiked(true);
+  // ==========================================
+  // СТРІЧКА ПОСТІВ
+  // ==========================================
+  const [feedPosts, setFeedPosts] = useState([
+    {
+      id: 1,
+      author: "Олена",
+      catName: "Рижик",
+      age: "3 р.",
+      image: "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
+      description: "Любить спати на клавіатурі та їсти сметану. Знову розбудив о 5 ранку 🐈",
+      likes: 124,
+      hasLiked: false,
+      comments: [
+        { id: 101, author: "Максим", text: "Який милий пухнастик! 😍", isMine: false },
+        { id: 102, author: "Ви", text: "Обожнюю рудих котів, просто супер.", isMine: true }
+      ],
+      newCommentText: "",
+      showCommentInput: false // Стейт для показу/приховування поля коментаря
+    },
+    {
+      id: 2,
+      author: "Vlad_Dev",
+      catName: "Барсік",
+      age: "1 р.",
+      image: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
+      description: "Гроза мишей і домашніх вазонів. Шукаємо йому подружку.",
+      likes: 89,
+      hasLiked: false,
+      comments: [],
+      newCommentText: "",
+      showCommentInput: false
     }
-  }, []);
-
-  // --- ГОЛОВНА ФУНКЦІЯ ЛАЙКУ ---
-  const handleLike = async () => {
-    // ЗАХИСТ ВІД НЕАВТОРИЗОВАНИХ
-    if (!isLoggedIn) {
-        setShowAuthModal(true);
-        return;
-    }
-
-    const isLikingNow = !hasLiked;
-    setHasLiked(isLikingNow);
-    setLikes(prev => isLikingNow ? prev + 1 : Math.max(0, prev - 1));
-
-    if (isLikingNow) localStorage.setItem('liked_current_cat', 'true');
-    else localStorage.removeItem('liked_current_cat');
-
-    try {
-      let response;
-      const token = localStorage.getItem('token');
-      const headers = { 'Content-Type': 'application/json' };
-
-      if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      if (isLikingNow) {
-        response = await fetch(ENDPOINT_POST_LIKE, {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ post_id: CAT_ID }),
-        });
-      } else {
-        response = await fetch(ENDPOINT_DELETE_LIKE, {
-            method: 'DELETE',
-            headers: headers
-        });
-      }
-
-      if (!response.ok) throw new Error('Помилка сервера при збереженні лайку');
-
-    } catch (error) {
-      console.error('Не вдалося відправити лайк на сервер:', error);
-      alert('Не вдалося зберегти лайк на сервері. Перевірте з\'єднання.');
-      setHasLiked(!isLikingNow);
-      setLikes(prev => !isLikingNow ? prev + 1 : Math.max(0, prev - 1));
-
-      if (!isLikingNow) localStorage.setItem('liked_current_cat', 'true');
-      else localStorage.removeItem('liked_current_cat');
-    }
-  };
-
-  // --- СТАН ДЛЯ КОМЕНТАРІВ ---
-  const [comments, setComments] = useState([
-    { id: 1, text: "Який милий пухнастик! 😍", author: "Олена", isMine: false },
-    { id: 2, text: "Обожнюю рудих котів, просто супер.", author: "Максим", isMine: false }
   ]);
 
-  const [newComment, setNewComment] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
 
-  // --- ФУНКЦІЇ ДЛЯ КОМЕНТАРІВ ---
-  const handleAddComment = (e) => {
-    e.preventDefault();
-
-    // ЗАХИСТ ВІД НЕАВТОРИЗОВАНИХ
+  // --- ЛОГІКА ЛАЙКУ ДЛЯ СТРІЧКИ ---
+  const handleLikePost = async (postId) => {
     if (!isLoggedIn) {
         setShowAuthModal(true);
         return;
     }
 
-    if (!newComment.trim()) return;
+    setFeedPosts(currentPosts =>
+      currentPosts.map(post => {
+        if (post.id === postId) {
+          const isLikingNow = !post.hasLiked;
+          return {
+            ...post,
+            hasLiked: isLikingNow,
+            likes: isLikingNow ? post.likes + 1 : Math.max(0, post.likes - 1)
+          };
+        }
+        return post;
+      })
+    );
 
-    const comment = {
-      id: Date.now(),
-      text: newComment,
-      author: "Ви",
-      isMine: true
-    };
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    setComments([...comments, comment]);
-    setNewComment('');
+      const post = feedPosts.find(p => p.id === postId);
+      const isLikingNow = !post.hasLiked;
+
+      await fetch(isLikingNow ? `${BASE_URL}/likes/` : `${BASE_URL}/likes/${postId}`, {
+        method: isLikingNow ? 'POST' : 'DELETE',
+        headers: headers,
+        body: isLikingNow ? JSON.stringify({ post_id: postId }) : null,
+      });
+    } catch (error) {
+      console.error('Помилка лайку:', error);
+    }
   };
 
-  const handleDeleteComment = (id) => {
+  // --- ЛОГІКА КОМЕНТАРІВ ---
+  const toggleCommentInput = (postId) => {
+    setFeedPosts(posts => posts.map(p =>
+        p.id === postId ? { ...p, showCommentInput: !p.showCommentInput } : p
+    ));
+  };
+
+  const handleCommentChange = (postId, text) => {
+    setFeedPosts(posts => posts.map(p =>
+      p.id === postId ? { ...p, newCommentText: text } : p
+    ));
+  };
+
+  const handleAddCommentToPost = (e, postId) => {
+    e.preventDefault();
+    if (!isLoggedIn) {
+        setShowAuthModal(true);
+        return;
+    }
+
+    setFeedPosts(posts => posts.map(post => {
+      if (post.id === postId && post.newCommentText.trim()) {
+        const newComment = {
+          id: Date.now(),
+          author: authName || "Ви",
+          text: post.newCommentText,
+          isMine: true
+        };
+        return {
+          ...post,
+          comments: [...post.comments, newComment],
+          newCommentText: "",
+          showCommentInput: false // Ховаємо інпут після публікації
+        };
+      }
+      return post;
+    }));
+  };
+
+  const handleDeleteComment = (postId, commentId) => {
     if (window.confirm("Ви точно хочете видалити цей коментар?")) {
-      setComments(comments.filter(c => c.id !== id));
+      setFeedPosts(posts => posts.map(post => {
+        if (post.id === postId) {
+          return { ...post, comments: post.comments.filter(c => c.id !== commentId) };
+        }
+        return post;
+      }));
     }
   };
 
@@ -219,12 +202,20 @@ export default function App() { // Відкриваємо дужку тут
     setEditCommentText(comment.text);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = (postId) => {
     if (!editCommentText.trim()) return;
 
-    setComments(comments.map(c =>
-      c.id === editingCommentId ? { ...c, text: editCommentText } : c
-    ));
+    setFeedPosts(posts => posts.map(post => {
+      if (post.id === postId) {
+        return {
+          ...post,
+          comments: post.comments.map(c =>
+            c.id === editingCommentId ? { ...c, text: editCommentText } : c
+          )
+        };
+      }
+      return post;
+    }));
 
     setEditingCommentId(null);
     setEditCommentText('');
@@ -256,16 +247,17 @@ export default function App() { // Відкриваємо дужку тут
     setShowAdForm(false);
   };
 
+
   return (
     <div className="flex h-screen bg-[#f4f4f5] font-sans relative">
 
         {/* БІЧНА ПАНЕЛЬ (Sidebar) */}
         <div className="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex shrink-0">
-            {/* Логотип */}
+            {/* НОВИЙ ЛОГОТИП (Лапка) */}
             <div className="p-6 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full border-4 border-[#bf04ff] flex items-center justify-center">
-                    <div className="w-3 h-3 bg-[#bf04ff] rounded-full"></div>
-                </div>
+                <svg className="w-10 h-10 text-[#bf04ff] drop-shadow-sm" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
+                </svg>
                 <h1 className="text-2xl font-black text-gray-900 tracking-tight">OnlyCats</h1>
             </div>
 
@@ -273,19 +265,18 @@ export default function App() { // Відкриваємо дужку тут
             <div className="px-4 mb-6">
                 <button
                     onClick={() => {
-                        // ЗАХИСТ ВІД НЕАВТОРИЗОВАНИХ
                         if (!isLoggedIn) {
                             setShowAuthModal(true);
                             return;
                         }
                         setActiveTab('addCat');
                     }}
-                    className="w-full bg-[#bf04ff] hover:bg-[#a103d8] text-white font-bold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 transition-colors"
+                    className="w-full bg-[#bf04ff] hover:bg-[#a103d8] text-white font-bold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-500/20"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Додати котика
+                    Створити пост
                 </button>
             </div>
 
@@ -294,35 +285,32 @@ export default function App() { // Відкриваємо дужку тут
                 <button
                     onClick={() => setActiveTab('home')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-colors ${
-                        activeTab === 'home' ?
-                        'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === 'home' ? 'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                     </svg>
-                    Головна
+                    Стрічка
                 </button>
 
                 <button
                     onClick={() => setActiveTab('explore')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-colors ${
-                        activeTab === 'explore' ?
-                        'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === 'explore' ? 'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                     </svg>
-                    Карта / Огляд
+                    Карта оголошень
                 </button>
 
                 <button
                     onClick={() => setActiveTab('rating')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-colors ${
-                        activeTab === 'rating' ?
-                        'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === 'rating' ? 'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,8 +322,7 @@ export default function App() { // Відкриваємо дужку тут
                 <button
                     onClick={() => setActiveTab('mycats')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-colors ${
-                        activeTab === 'mycats' ?
-                        'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === 'mycats' ? 'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,8 +334,7 @@ export default function App() { // Відкриваємо дужку тут
                 <button
                     onClick={() => setActiveTab('profile')}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-colors ${
-                        activeTab === 'profile' ?
-                        'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === 'profile' ? 'bg-[#fdf4ff] text-[#bf04ff]' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -358,7 +344,7 @@ export default function App() { // Відкриваємо дужку тут
                 </button>
             </nav>
 
-            {/* НИЖНІЙ БЛОК: РЕЄСТРАЦІЯ / АВТОРИЗАЦІЯ / ВИХІД */}
+            {/* НИЖНІЙ БЛОК */}
             <div className="p-4 border-t border-gray-100">
                 {isLoggedIn ? (
                     <button
@@ -389,76 +375,100 @@ export default function App() { // Відкриваємо дужку тут
         {/* ГОЛОВНА ЗОНА */}
         <div className="flex-1 flex flex-col items-center p-6 md:p-8 overflow-y-auto w-full">
 
-            {/* Головна - Картка котика + Коментарі */}
+            {/* --- СТРІЧКА ПОСТІВ --- */}
             {activeTab === 'home' && (
-                <div className="w-full max-w-[420px] flex flex-col gap-6 pb-12 mt-auto mb-auto">
+                <div className="w-full max-w-[540px] flex flex-col gap-10 pb-12 mt-2">
 
-                    {/* Картка */}
-                    <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 w-full overflow-hidden flex flex-col">
-                        <div className="h-[400px] w-full bg-gray-100 relative">
-                            <img src="https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="cat" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <h2 className="text-3xl font-black text-gray-900">Рижик, 3 р.</h2>
-                                <div className="flex items-center gap-1 bg-orange-50 px-3 py-1.5 rounded-full transition-all">
-                                    <span className="text-orange-500 text-lg">🔥</span>
-                                    <span className="text-orange-600 font-bold">{likes}</span>
+                    {feedPosts.map((post) => (
+                        <article
+                            key={post.id}
+                            className="bg-white rounded-[32px] shadow-sm border border-gray-100 w-full overflow-hidden flex flex-col transition-all hover:shadow-md hover:-translate-y-1 hover:border-[#bf04ff]/30"
+                        >
+                            {/* Шапка поста */}
+                            <div className="p-5 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    {/* Аватарка автора */}
+                                    <div className="w-12 h-12 rounded-full bg-[#fdf4ff] border border-[#bf04ff] flex items-center justify-center text-[#bf04ff] font-black text-xl">
+                                        {post.author.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-gray-900 text-lg leading-tight">{post.author}</h3>
+                                        <p className="text-gray-500 font-medium text-sm">{post.catName}, {post.age}</p>
+                                    </div>
+                                </div>
+                                <button className="text-gray-400 hover:text-[#bf04ff] transition-colors p-2">
+                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                                </button>
+                            </div>
+
+                            {/* Картинка (Дабл тап для лайку) */}
+                            <div
+                                className="w-full aspect-square bg-gray-100 relative cursor-pointer group"
+                                onDoubleClick={() => handleLikePost(post.id)}
+                            >
+                                <img src={post.image} alt={post.catName} className="w-full h-full object-cover transition-transform duration-500" />
+                                <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <span className="text-white font-bold bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm">Двічі клацніть ❤️</span>
                                 </div>
                             </div>
-                            <p className="text-gray-600 text-lg mb-8">Любить спати на клавіатурі та їсти сметану.</p>
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={handleLike}
-                                    className={`flex-1 font-bold py-4 rounded-2xl transition-all shadow-lg ${
-                                        hasLiked
-                                        ? 'bg-purple-50 text-[#bf04ff] border-2 border-purple-200 shadow-none'
-                                        : 'bg-[#bf04ff] hover:bg-[#a103d8] text-white border-2 border-[#bf04ff] shadow-purple-500/30'
-                                    }`}
-                                >
-                                    {hasLiked ? 'Підтримано 💖' : 'Підтримати'}
-                                </button>
-                                <button className="flex-1 bg-white border-2 border-gray-100 hover:border-gray-200 text-gray-900 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors">
-                                    Наступний
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-                                    </svg>
-                                </button>
+
+                            {/* Дії (Лайк, Відкрити коментарі, Поділитися) */}
+                            <div className="p-5 pb-2 flex items-center justify-between">
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => handleLikePost(post.id)}
+                                        className={`transition-transform active:scale-75 flex items-center justify-center ${post.hasLiked ? 'text-[#bf04ff]' : 'text-gray-900 hover:text-gray-500'}`}
+                                    >
+                                        <svg className="w-8 h-8 drop-shadow-sm" fill={post.hasLiked ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={post.hasLiked ? "1" : "2"} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                                        </svg>
+                                    </button>
+                                    {/* Кнопка "Коментувати" */}
+                                    <button
+                                        onClick={() => toggleCommentInput(post.id)}
+                                        className={`transition-transform active:scale-75 ${post.showCommentInput ? 'text-[#bf04ff]' : 'text-gray-900 hover:text-gray-500'}`}
+                                    >
+                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                                        </svg>
+                                    </button>
+                                    <button className="text-gray-900 hover:text-gray-500 transition-transform active:scale-75">
+                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* --- БЛОК КОМЕНТАРІВ --- */}
-                    <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-6 w-full">
-                        <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-                            Коментарі <span className="text-gray-400 font-medium text-lg">({comments.length})</span>
-                        </h3>
+                            {/* Опис і лайки */}
+                            <div className="px-5 mb-4">
+                                <p className="font-black text-gray-900 mb-1">{post.likes} вподобань</p>
+                                <p className="text-gray-700 text-[15px] leading-relaxed">
+                                    <span className="font-black text-gray-900 mr-2">{post.author}</span>
+                                    {post.description}
+                                </p>
+                            </div>
 
-                        {/* Список коментарів */}
-                        <div className="space-y-4 mb-6">
-                            {comments.length === 0 ? (
-                                <p className="text-gray-500 text-center py-4">Поки що немає коментарів. Станьте першим!</p>
-                            ) : (
-                                comments.map(comment => (
+                            {/* --- БЛОК КОМЕНТАРІВ (Бульбашки) --- */}
+                            <div className="px-5 mb-4 space-y-3">
+                                {post.comments.length > 0 && post.comments.map(comment => (
                                     <div key={comment.id} className={`p-4 rounded-2xl ${comment.isMine ? 'bg-[#fdf4ff] border border-purple-100' : 'bg-gray-50'}`}>
-
-                                        {/* Шапка коментаря */}
                                         <div className="flex justify-between items-center mb-2">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg">
+                                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg font-bold">
                                                     {comment.author.charAt(0)}
                                                 </div>
                                                 <span className="font-bold text-gray-900 text-sm">{comment.author}</span>
-                                                {comment.isMine && <span className="text-xs bg-[#bf04ff] text-white px-2 py-0.5 rounded-full">Автор</span>}
+                                                {comment.isMine && <span className="text-xs bg-[#bf04ff] text-white px-2 py-0.5 rounded-full">Ви</span>}
                                             </div>
 
-                                            {/* Кнопки Дій */}
+                                            {/* Кнопки Дій (Редагувати/Видалити) */}
                                             {comment.isMine && editingCommentId !== comment.id && (
                                                 <div className="flex items-center gap-3">
                                                     <button onClick={() => startEditing(comment)} className="text-gray-400 hover:text-[#bf04ff] transition-colors" title="Редагувати">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                                     </button>
-                                                    <button onClick={() => handleDeleteComment(comment.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Видалити">
+                                                    <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Видалити">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                     </button>
                                                 </div>
@@ -478,7 +488,7 @@ export default function App() { // Відкриваємо дужку тут
                                                     <button onClick={handleCancelEdit} className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors">
                                                         Скасувати
                                                     </button>
-                                                    <button onClick={handleSaveEdit} className="bg-[#bf04ff] hover:bg-[#a103d8] text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors shadow-sm">
+                                                    <button onClick={() => handleSaveEdit(post.id)} className="bg-[#bf04ff] hover:bg-[#a103d8] text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors shadow-sm">
                                                         Зберегти
                                                     </button>
                                                 </div>
@@ -487,29 +497,39 @@ export default function App() { // Відкриваємо дужку тут
                                             <p className="text-gray-700 ml-10 text-sm leading-relaxed">{comment.text}</p>
                                         )}
                                     </div>
-                                ))
-                            )}
-                        </div>
+                                ))}
+                            </div>
 
-                        {/* Форма створення нового коментаря */}
-                        <form onSubmit={handleAddComment} className="flex gap-2">
-                            <input
-                                type="text"
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                placeholder="Написати коментар..."
-                                className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-2xl focus:ring-[#bf04ff] focus:border-[#bf04ff] block px-4 py-3.5 outline-none transition-colors"
-                            />
-                            <button
-                                type="submit"
-                                className={`flex items-center justify-center w-14 rounded-2xl transition-all ${
-                                    newComment.trim() ?
-                                    'bg-[#bf04ff] hover:bg-[#a103d8] text-white shadow-lg shadow-purple-500/30 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                }`}
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                            </button>
-                        </form>
+                            {/* Прихована форма додавання коментаря */}
+                            {post.showCommentInput && (
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 mt-auto animate-[bounce-in_0.3s_ease-out]">
+                                    <form onSubmit={(e) => handleAddCommentToPost(e, post.id)} className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={post.newCommentText}
+                                            onChange={(e) => handleCommentChange(post.id, e.target.value)}
+                                            placeholder="Написати коментар..."
+                                            className="flex-1 bg-white border border-gray-200 text-gray-900 rounded-2xl focus:ring-[#bf04ff] focus:border-[#bf04ff] block px-4 py-3 outline-none transition-colors"
+                                        />
+                                        <button
+                                            type="submit"
+                                            className={`flex items-center justify-center px-5 rounded-2xl font-bold transition-all ${
+                                                post.newCommentText.trim() ? 'bg-[#bf04ff] hover:bg-[#a103d8] text-white shadow-md shadow-purple-500/30' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                        </button>
+                                    </form>
+                                </div>
+                            )}
+
+                        </article>
+                    ))}
+
+                    <div className="text-center py-6">
+                        <span className="text-4xl block mb-2">🐈</span>
+                        <p className="text-gray-400 font-bold">Ви переглянули всі новини на сьогодні</p>
                     </div>
                 </div>
             )}
@@ -524,7 +544,7 @@ export default function App() { // Відкриваємо дужку тут
                 </div>
             )}
 
-            {/* Вкладка: КАРТА ОГОЛОШЕНЬ (Колишній Explore) */}
+            {/* Вкладка: КАРТА ОГОЛОШЕНЬ */}
             {activeTab === 'explore' && (
                 <div className="w-full max-w-4xl flex flex-col gap-6 pb-12 mt-6">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
@@ -546,18 +566,16 @@ export default function App() { // Відкриваємо дужку тут
                         </button>
                     </div>
 
-                    {/* БЛОК ІНТЕРАКТИВНОЇ КАРТИ (Візуальна імітація) */}
+                    {/* БЛОК ІНТЕРАКТИВНОЇ КАРТИ */}
                     <div className="relative w-full h-80 bg-blue-50/50 rounded-[32px] border-2 border-blue-100 overflow-hidden shadow-sm flex items-center justify-center mb-2">
-                        {/* Декоративна сітка для фону карти */}
                         <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#bf04ff 1px, transparent 1px)', backgroundSize: '24px 24px', opacity: 0.1 }}></div>
-                        
+
                         <div className="text-center z-10 bg-white/90 p-6 rounded-3xl backdrop-blur-md shadow-sm border border-gray-100">
                             <span className="text-5xl block mb-3">📍</span>
                             <p className="text-xl font-black text-gray-900">Місце для карти</p>
                             <p className="text-gray-500 text-sm mt-1">Тут відображатимуться піни оголошень</p>
                         </div>
 
-                        {/* Плаваючі піни */}
                         <div className="absolute top-[20%] left-[25%] text-4xl animate-bounce drop-shadow-lg cursor-pointer hover:scale-110 transition-transform">📍</div>
                         <div className="absolute bottom-[25%] right-[20%] text-4xl animate-bounce drop-shadow-lg cursor-pointer hover:scale-110 transition-transform" style={{ animationDelay: '0.4s' }}>📍</div>
                         <div className="absolute top-[45%] right-[40%] text-4xl animate-bounce drop-shadow-lg cursor-pointer hover:scale-110 transition-transform" style={{ animationDelay: '0.2s' }}>📍</div>
@@ -641,9 +659,10 @@ export default function App() { // Відкриваємо дужку тут
             {activeTab === 'auth' && (
                 <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 w-full max-w-md m-auto">
                     <div className="flex justify-center mb-6">
-                        <div className="w-12 h-12 rounded-full border-4 border-[#bf04ff] flex items-center justify-center">
-                            <div className="w-4 h-4 bg-[#bf04ff] rounded-full"></div>
-                        </div>
+                        {/* НОВИЙ ЛОГОТИП ДЛЯ ФОРМИ ВХОДУ (Лапка) */}
+                        <svg className="w-14 h-14 text-[#bf04ff] drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
+                        </svg>
                     </div>
 
                     <h2 className="text-2xl font-black text-center text-gray-900 mb-2">
@@ -717,13 +736,14 @@ export default function App() { // Відкриваємо дужку тут
 
             {/* Заглушки інших сторінок */}
             {activeTab === 'rating' && <h2 className="text-3xl font-bold text-gray-400 m-auto">Сторінка "Рейтинг" (В розробці)</h2>}
-            {activeTab === 'mycats' && <h2 className="text-3xl font-bold text-gray-400 m-auto">Сторінка "Мої котики" (Сумно)</h2>}
+            {activeTab === 'mycats' && <h2 className="text-3xl font-bold text-gray-400 m-auto">Сторінка "Мої котики" (В розробці)</h2>}
             {activeTab === 'profile' && <h2 className="text-3xl font-bold text-gray-400 m-auto">Сторінка "Профіль" (В розробці)</h2>}
-            {activeTab === 'ads' && <Ads />} 
+
+            {activeTab === 'ads' && <Ads />}
 
         </div>
 
-        {/* --- ПЛАШКА: ЗАБОРОНЯЄ (Для гостей) --- */}
+        {/* --- ПЛАШКА: КАТРУСЯ ЗАБОРОНЯЄ (Для гостей) --- */}
         {showAuthModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl relative animate-[bounce-in_0.5s_ease-out]">
@@ -738,8 +758,8 @@ export default function App() { // Відкриваємо дужку тут
                         </div>
                         <h3 className="text-2xl font-black text-gray-900 mb-3">Обережно!</h3>
                         <p className="text-gray-600 mb-8 font-medium leading-relaxed text-lg px-2">
-                            <span className="text-rose-500 font-bold">Адміністрація забороняє</span> подібні дії не зараєстрованим користувачам, вона буде злитись!
-                            <br/><br/>Зареєструйтесь чи увійдіть, для початку!
+                            <span className="text-rose-500 font-bold">Катруся забороняє</span> подібні дії не зараєстрованим користувачам, вона буде злитись!
+                            <br/><br/>Зараєструйтесь чи увійдіть, для початку!
                         </p>
                         <div className="flex w-full gap-3">
                             <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('register'); }} className="flex-1 bg-white hover:bg-gray-50 border-2 border-gray-200 text-gray-700 font-bold py-4 px-4 rounded-xl transition-colors">
@@ -753,6 +773,27 @@ export default function App() { // Відкриваємо дужку тут
                 </div>
             </div>
         )}
+
+        {/* --- ПЛАШКА: СЮРПРИЗ ДЛЯ КАТРУСІ (При логіні) --- */}
+        {showSurprise && (
+            <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-opacity duration-1000">
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                    {[...Array(25)].map((_, i) => (
+                        <div key={i} className="absolute text-red-500/40 animate-pulse" style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, fontSize: `${Math.random() * 20 + 10}px`, animationDuration: `${Math.random() * 3 + 2}s`, animationDelay: `${Math.random() * 2}s` }}>❤</div>
+                    ))}
+                </div>
+                <div className="relative flex flex-col items-center animate-[bounce_3s_infinite] z-10">
+                    <svg className="w-48 h-48 text-red-500 drop-shadow-[0_0_60px_rgba(239,68,68,0.9)] animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+                    <h1 className="mt-8 text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-red-500 to-rose-400 text-center px-4 drop-shadow-2xl">
+                        Дуже кохаю тебе, моє сонечко &lt;3
+                    </h1>
+                </div>
+                <button onClick={() => { setShowSurprise(false); setActiveTab('home'); }} className="mt-16 px-8 py-4 bg-red-500/20 hover:bg-red-500/40 border-2 border-red-500/50 text-red-100 rounded-full font-bold tracking-widest uppercase transition-all hover:scale-110 backdrop-blur-sm z-10 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+                    Перейти до котиків 🐾
+                </button>
+            </div>
+        )}
+
     </div>
   );
 }
