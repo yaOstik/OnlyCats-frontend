@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 
-// Firebase нам більше не потрібен, тому ми прибрали його імпорти!
-
 export default function AddCat({ onAdded }) {
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
@@ -9,32 +7,37 @@ export default function AddCat({ onAdded }) {
   const [imageFile, setImageFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Вказуємо адресу вашого бекенду для постів
-  const ENDPOINT_CREATE_POST = 'https://7fy5ddq0g2.execute-api.eu-north-1.amazonaws.com/Prod/posts/';
+  const BASE_URL = 'https://5fpeo7vj4m.execute-api.eu-north-1.amazonaws.com/Prod';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!imageFile) return alert("Будь ласка, обери фото!");
+
+    // 1. ДІСТАЄМО ТОКЕН АВТОРИЗАЦІЇ
+    const token = localStorage.getItem('token')?.replace(/"/g, '');
+    if (!token) {
+        alert("Ти не авторизований! Увійди в акаунт, щоб виставляти котиків.");
+        return;
+    }
 
     setLoading(true);
     try {
-      // 1. Створюємо об'єкт FormData (це як віртуальна посилка для файлів та тексту)
       const formData = new FormData();
 
-      // 2. Пакуємо дані так, як цього очікує FastAPI:
-      // - title (передаємо ім'я)
+      // 2. Пакуємо дані для бекенду
       formData.append('title', name);
-      // - content (об'єднуємо вік та опис)
-      formData.append('content', `${age} р. ${breed}`);
-      // - image (сам файл фотографії)
+      formData.append('content', breed); // Опис породи/ситуації
+      formData.append('cat_age', parseInt(age, 10)); // Бекенд чекає саме cat_age як число
       formData.append('image', imageFile);
 
-      // 3. Відправляємо запит на НАШ бекенд
-      const response = await fetch(ENDPOINT_CREATE_POST, {
+      // 3. Відправляємо запит з нашим токеном-пропуском
+      const response = await fetch(`${BASE_URL}/posts/`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}` // Показуємо бекенду наш "паспорт"
+        },
         body: formData,
-        // Важливо: при відправці FormData НЕ треба вказувати 'Content-Type'.
-        // Браузер сам зрозуміє, що це файл, і поставить правильні заголовки.
       });
 
       if (!response.ok) {
@@ -49,7 +52,7 @@ export default function AddCat({ onAdded }) {
       setBreed('');
       setImageFile(null);
 
-      // Викликаємо функцію, щоб повернутися на головну сторінку
+      // Повертаємося на головну сторінку
       if (onAdded) onAdded();
 
     } catch (error) {
@@ -97,9 +100,9 @@ export default function AddCat({ onAdded }) {
             onChange={e => setBreed(e.target.value)}
             required
         />
-        
-        <button 
-          type="submit" 
+
+        <button
+          type="submit"
           disabled={loading}
           className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg transition-all active:scale-95 ${loading ? 'bg-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-100'}`}
         >
