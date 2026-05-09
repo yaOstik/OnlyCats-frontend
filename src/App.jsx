@@ -2,70 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Ads from './Ads';
 import AddCat from './AddCat';
 import ExploreMap from './ExploreMap';
-
-// ==========================================
-// TASKS PAGE COMPONENT
-// ==========================================
-const TasksPage = () => {
-  const [tasks, setTasks] = useState([
-    { id: 1, text: 'Feed the cat', completed: false },
-    { id: 2, text: 'Pet the fluffy one', completed: false },
-    { id: 3, text: 'Clean the litter box', completed: false }
-  ]);
-
-  const toggleTask = (id) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-  };
-
-  const completedCount = tasks.filter(t => t.completed).length;
-  const progress = Math.round((completedCount / tasks.length) * 100);
-
-  return (
-    <div className="w-full pb-12">
-      <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 mb-6">
-        <div className="flex justify-between items-center mb-3">
-           <span className="font-bold text-gray-700">Your care progress 🐾</span>
-           <span className="text-[#d946ef] font-black text-xl">{progress}%</span>
-        </div>
-        <div className="w-full bg-gray-50 h-3.5 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#d946ef] transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {tasks.map(task => (
-          <div
-            key={task.id}
-            onClick={() => toggleTask(task.id)}
-            className={`flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
-              task.completed
-              ? 'bg-[#fdf4ff] border-fuchsia-100 scale-[0.99]'
-              : 'bg-white border-transparent hover:border-fuchsia-50 shadow-sm'
-            }`}
-          >
-            <div className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all ${
-              task.completed ? 'bg-[#d946ef] border-[#d946ef]' : 'border-gray-200 bg-white'
-            }`}>
-              {task.completed && (
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                </svg>
-              )}
-            </div>
-            <span className={`text-lg font-bold transition-all ${
-              task.completed ? 'text-gray-400 line-through' : 'text-gray-800'
-            }`}>
-              {task.text}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+import TasksPage from './TasksPage';
 
 // ==========================================
 // MAIN APP COMPONENT
@@ -84,10 +21,20 @@ export default function App() {
   const [welcomeTitle, setWelcomeTitle] = useState('');
   const [welcomeDesc, setWelcomeDesc] = useState('');
 
-  // Toggle for Leaderboard Tab
   const [ratingPeriod, setRatingPeriod] = useState('daily');
 
   const BASE_URL = 'https://5fpeo7vj4m.execute-api.eu-north-1.amazonaws.com/Prod';
+
+  const getMyUserId = () => {
+    try {
+        const token = localStorage.getItem('token')?.replace(/"/g, '');
+        if (!token) return null;
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return String(payload.sub || payload.id || payload.user_id);
+    } catch (e) {
+        return null;
+    }
+  };
 
   // --- AUTH LOGIC ---
   const handleAuthSubmit = async (e) => {
@@ -108,6 +55,13 @@ export default function App() {
 
       const data = await response.json();
       localStorage.setItem('token', data.access_token || JSON.stringify(data));
+
+      if (authMode === 'register') {
+          localStorage.setItem('username', authName);
+      } else if (data.username) {
+          localStorage.setItem('username', data.username);
+      }
+
       setIsLoggedIn(true);
 
       if (authMode === 'login') {
@@ -128,6 +82,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('username');
     setIsLoggedIn(false);
     setActiveTab('home');
     window.location.reload();
@@ -138,24 +93,66 @@ export default function App() {
 
   const fetchFeedPosts = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/posts/`);
-      if (!response.ok) throw new Error('Failed to load kitties');
+      const token = localStorage.getItem('token')?.replace(/"/g, '');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const data = await response.json();
-      const formattedPosts = data.map(post => ({
-        id: post.id,
-        author: post.username || post.owner?.username || post.author_name || "Incognito Cat",
-        catName: post.title || "Fluffy",
-        age: post.cat_age !== undefined && post.cat_age !== null ? `${post.cat_age} y.o.` : "Age unknown",
-        image: post.image_url || "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-        description: post.content || "",
-        likes: post.likes_count || 0,
-        hasLiked: post.has_liked || false,
-        createdAt: post.created_at || new Date().toISOString(), // Keep track of date for ratings
-        comments: [],
-        newCommentText: "",
-        showCommentInput: false
-      }));
+      const fetchPostsPromise = fetch(`${BASE_URL}/posts/`);
+      const fetchLikesPromise = token ? fetch(`${BASE_URL}/likes/me`, { headers }) : Promise.resolve(null);
+
+      const [postsResponse, likesResponse] = await Promise.all([fetchPostsPromise, fetchLikesPromise]);
+
+      if (!postsResponse.ok) throw new Error('Failed to load kitties');
+
+      const postsData = await postsResponse.json();
+
+      let myLikedPostIds = [];
+      if (likesResponse && likesResponse.ok) {
+          const likesData = await likesResponse.json();
+          myLikedPostIds = likesData.post_ids || [];
+      }
+
+      const commentsPromises = postsData.map(post =>
+          fetch(`${BASE_URL}/comments/${post.id}`).then(res => res.ok ? res.json() : [])
+      );
+      const allCommentsData = await Promise.all(commentsPromises);
+
+      const myUserId = getMyUserId();
+      const myLocalName = localStorage.getItem('username');
+
+      const formattedPosts = postsData.map((post, index) => {
+        const likesFromServer = post.rating_score || post.likes_count || post.likes || 0;
+        const postAuthor = post.author_username || post.authorUsername || post.username || post.owner?.username || "Incognito Cat";
+
+        const rawComments = allCommentsData[index] || [];
+        const formattedComments = rawComments.map(c => {
+            const isMine = String(c.user_id) === String(myUserId);
+            const authorName = c.author_username || c.authorUsername || c.username || (isMine ? (myLocalName || "You") : `User ${c.user_id}`);
+            return {
+                id: c.id,
+                author: authorName,
+                text: c.content,
+                isMine: isMine
+            };
+        });
+
+        return {
+          id: post.id,
+          author: postAuthor,
+          catName: post.title || "Fluffy",
+          age: post.cat_age !== undefined && post.cat_age !== null ? `${post.cat_age} y.o.` : "Age unknown",
+          image: post.image_url || "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
+          description: post.content || "",
+          likes: likesFromServer,
+          hasLiked: myLikedPostIds.includes(post.id),
+          createdAt: post.created_at || new Date().toISOString(),
+
+          comments: formattedComments,
+          newCommentText: "",
+          showCommentInput: false,
+          isCommentsExpanded: false
+        };
+      });
 
       setFeedPosts(formattedPosts.sort((a, b) => b.id - a.id));
     } catch (error) {
@@ -165,14 +162,11 @@ export default function App() {
 
   useEffect(() => {
     fetchFeedPosts();
-  }, []);
+  }, [isLoggedIn]);
 
-  // ==========================================
-  // REAL DYNAMIC LEADERBOARD LOGIC
-  // ==========================================
+  // --- LEADERBOARD LOGIC ---
   const now = new Date();
 
-  // Helper to format rank styling
   const formatRank = (post, index) => {
       let trend = '';
       let color = 'text-gray-400';
@@ -192,93 +186,207 @@ export default function App() {
       };
   };
 
-  // Filter posts from last 24 hours
-  const dailyCats = [...feedPosts]
-      .filter(post => (now - new Date(post.createdAt)) < 24 * 60 * 60 * 1000)
-      .sort((a, b) => b.likes - a.likes)
-      .map(formatRank);
-
-  // Filter posts from last 30 days
-  const monthlyCats = [...feedPosts]
-      .filter(post => (now - new Date(post.createdAt)) < 30 * 24 * 60 * 60 * 1000)
-      .sort((a, b) => b.likes - a.likes)
-      .map(formatRank);
-
-  // Widget only shows Top 3 Daily Cats
+  const dailyCats = [...feedPosts].filter(post => (now - new Date(post.createdAt)) < 24 * 60 * 60 * 1000).sort((a, b) => b.likes - a.likes).map(formatRank);
+  const monthlyCats = [...feedPosts].filter(post => (now - new Date(post.createdAt)) < 30 * 24 * 60 * 60 * 1000).sort((a, b) => b.likes - a.likes).map(formatRank);
   const widgetTopCats = dailyCats.slice(0, 3);
-
-  // Tab displays either Daily or Monthly based on toggle
   const displayLeaderboard = ratingPeriod === 'daily' ? dailyCats : monthlyCats;
 
-  // --- LIKES & COMMENTS LOGIC ---
-  const [editingCommentId, setEditingCommentId] = useState(null);
-  const [editCommentText, setEditCommentText] = useState('');
-
+  // --- LIKES LOGIC ---
   const handleLikePost = async (postId) => {
     if (!isLoggedIn) return setShowAuthModal(true);
 
-    setFeedPosts(currentPosts =>
-      currentPosts.map(post => {
+    const postToLike = feedPosts.find(p => p.id === postId);
+    if (!postToLike) return;
+
+    const isLikingNow = !postToLike.hasLiked;
+
+    setFeedPosts(currentPosts => currentPosts.map(post => {
         if (post.id === postId) {
-          const isLikingNow = !post.hasLiked;
           return { ...post, hasLiked: isLikingNow, likes: isLikingNow ? post.likes + 1 : Math.max(0, post.likes - 1) };
         }
         return post;
-      })
-    );
+    }));
 
     try {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const post = feedPosts.find(p => p.id === postId);
-      const isLikingNow = !post.hasLiked;
+      if (!token) throw new Error("No token");
 
-      await fetch(isLikingNow ? `${BASE_URL}/likes/` : `${BASE_URL}/likes/${postId}`, {
-        method: isLikingNow ? 'POST' : 'DELETE',
-        headers: headers,
-        body: isLikingNow ? JSON.stringify({ post_id: postId }) : null,
-      });
-    } catch (error) {
-      console.error(error);
-    }
-  };
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      const url = isLikingNow ? `${BASE_URL}/likes/` : `${BASE_URL}/likes/${postId}`;
+      const method = isLikingNow ? 'POST' : 'DELETE';
+      const body = isLikingNow ? JSON.stringify({ post_id: parseInt(postId) }) : null;
 
-  const toggleCommentInput = (postId) => setFeedPosts(posts => posts.map(p => p.id === postId ? { ...p, showCommentInput: !p.showCommentInput } : p));
-  const handleCommentChange = (postId, text) => setFeedPosts(posts => posts.map(p => p.id === postId ? { ...p, newCommentText: text } : p));
+      const response = await fetch(url, { method, headers, body });
 
-  const handleAddCommentToPost = (e, postId) => {
-    e.preventDefault();
-    if (!isLoggedIn) return setShowAuthModal(true);
-
-    setFeedPosts(posts => posts.map(post => {
-      if (post.id === postId && post.newCommentText.trim()) {
-        const newComment = { id: Date.now(), author: authName || "You", text: post.newCommentText, isMine: true };
-        return { ...post, comments: [...post.comments, newComment], newCommentText: "", showCommentInput: false };
+      if (!response.ok) {
+        if (response.status === 401) alert("Your session expired. Please log out and log in again! 🐾");
+        throw new Error(`Server error: ${response.status}`);
       }
-      return post;
-    }));
-  };
-
-  const handleDeleteComment = (postId, commentId) => {
-    if (window.confirm("Meow, are you sure you want to delete this comment?")) {
-      setFeedPosts(posts => posts.map(post => {
-        if (post.id === postId) return { ...post, comments: post.comments.filter(c => c.id !== commentId) };
-        return post;
+    } catch (error) {
+      setFeedPosts(currentPosts => currentPosts.map(post => {
+          if (post.id === postId) return { ...post, hasLiked: !isLikingNow, likes: !isLikingNow ? post.likes + 1 : Math.max(0, post.likes - 1) };
+          return post;
       }));
     }
   };
 
-  const startEditing = (comment) => { setEditingCommentId(comment.id); setEditCommentText(comment.text); };
-  const handleSaveEdit = (postId) => {
-    if (!editCommentText.trim()) return;
-    setFeedPosts(posts => posts.map(post => {
-      if (post.id === postId) {
-        return { ...post, comments: post.comments.map(c => c.id === editingCommentId ? { ...c, text: editCommentText } : c) };
+  // ==========================================
+  // --- COMMENTS LOGIC ---
+  // ==========================================
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editCommentText, setEditCommentText] = useState('');
+
+  const toggleComments = async (postId) => {
+    const post = feedPosts.find(p => p.id === postId);
+    const willExpand = !post.isCommentsExpanded;
+
+    setFeedPosts(posts => posts.map(p => p.id === postId ? {
+        ...p,
+        showCommentInput: willExpand,
+        isCommentsExpanded: willExpand
+    } : p));
+
+    if (willExpand) {
+        try {
+            const response = await fetch(`${BASE_URL}/comments/${postId}`);
+            if (response.ok) {
+                const data = await response.json();
+                const myUserId = getMyUserId();
+                const myLocalName = localStorage.getItem('username');
+
+                const formattedComments = data.map(c => {
+                    const isMine = String(c.user_id) === String(myUserId);
+                    const authorName = c.author_username || c.authorUsername || c.username || (isMine ? (myLocalName || "You") : `User ${c.user_id}`);
+
+                    return {
+                        id: c.id,
+                        author: authorName,
+                        text: c.content,
+                        isMine: isMine
+                    };
+                });
+
+                setFeedPosts(posts => posts.map(p => p.id === postId ? { ...p, comments: formattedComments } : p));
+            }
+        } catch (error) {
+            console.error("Failed to fetch comments", error);
+        }
+    }
+  };
+
+  const handleCommentChange = (postId, text) => setFeedPosts(posts => posts.map(p => p.id === postId ? { ...p, newCommentText: text } : p));
+
+  const handleAddCommentToPost = async (e, postId) => {
+    e.preventDefault();
+    if (!isLoggedIn) return setShowAuthModal(true);
+
+    const post = feedPosts.find(p => p.id === postId);
+    const text = post.newCommentText.trim();
+    if (!text) return;
+
+    const tempId = Date.now();
+    const myLocalName = localStorage.getItem('username') || "You";
+
+    setFeedPosts(posts => posts.map(p => {
+      if (p.id === postId) {
+        return {
+            ...p,
+            comments: [...p.comments, { id: tempId, author: myLocalName, text: text, isMine: true }],
+            newCommentText: "",
+            isCommentsExpanded: true
+        };
       }
-      return post;
+      return p;
     }));
-    setEditingCommentId(null); setEditCommentText('');
+
+    try {
+      const token = localStorage.getItem('token')?.replace(/"/g, '');
+      const response = await fetch(`${BASE_URL}/comments/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ post_id: postId, content: text })
+      });
+
+      if (!response.ok) throw new Error("Failed to post comment");
+      const savedComment = await response.json();
+
+      setFeedPosts(posts => posts.map(p => {
+        if (p.id === postId) {
+          const finalAuthor = savedComment.author_username || savedComment.authorUsername || savedComment.username || myLocalName;
+          return { ...p, comments: p.comments.map(c => c.id === tempId ? { ...c, id: savedComment.id, author: finalAuthor } : c) };
+        }
+        return p;
+      }));
+    } catch (error) {
+      console.error(error);
+      setFeedPosts(posts => posts.map(p => {
+        if (p.id === postId) return { ...p, comments: p.comments.filter(c => c.id !== tempId) };
+        return p;
+      }));
+    }
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+    if (window.confirm("Meow, are you sure you want to delete this comment?")) {
+      const post = feedPosts.find(p => p.id === postId);
+      const commentToDelete = post.comments.find(c => c.id === commentId);
+
+      setFeedPosts(posts => posts.map(post => {
+        if (post.id === postId) return { ...post, comments: post.comments.filter(c => c.id !== commentId) };
+        return post;
+      }));
+
+      try {
+          const token = localStorage.getItem('token')?.replace(/"/g, '');
+          const response = await fetch(`${BASE_URL}/comments/${commentId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!response.ok) throw new Error("Failed to delete");
+      } catch (error) {
+          setFeedPosts(posts => posts.map(p => {
+            if (p.id === postId) return { ...p, comments: [...p.comments, commentToDelete] };
+            return p;
+          }));
+      }
+    }
+  };
+
+  const startEditing = (comment) => { setEditingCommentId(comment.id); setEditCommentText(comment.text); };
+
+  const handleSaveEdit = async (postId) => {
+    if (!editCommentText.trim()) return;
+
+    const post = feedPosts.find(p => p.id === postId);
+    const originalText = post.comments.find(c => c.id === editingCommentId).text;
+    const currentEditId = editingCommentId;
+
+    setFeedPosts(posts => posts.map(p => {
+      if (p.id === postId) {
+        return { ...p, comments: p.comments.map(c => c.id === currentEditId ? { ...c, text: editCommentText } : c) };
+      }
+      return p;
+    }));
+
+    setEditingCommentId(null);
+    setEditCommentText('');
+
+    try {
+        const token = localStorage.getItem('token')?.replace(/"/g, '');
+        const response = await fetch(`${BASE_URL}/comments/${currentEditId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ content: editCommentText })
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+    } catch (error) {
+        setFeedPosts(posts => posts.map(p => {
+          if (p.id === postId) {
+            return { ...p, comments: p.comments.map(c => c.id === currentEditId ? { ...c, text: originalText } : c) };
+          }
+          return p;
+        }));
+    }
   };
   const handleCancelEdit = () => { setEditingCommentId(null); setEditCommentText(''); };
 
@@ -299,6 +407,16 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#fafafa] font-sans relative text-gray-800">
 
+        {/* --- GLOBAL STYLES ДЛЯ КОРПОРАТИВНОГО СКРОЛУ --- */}
+        <style>
+        {`
+            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+            .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+        `}
+        </style>
+
         {/* ======================================= */}
         {/* 1. LEFT SIDEBAR */}
         {/* ======================================= */}
@@ -316,7 +434,7 @@ export default function App() {
             <nav className="flex-1 px-4 space-y-1">
                 {[
                     { id: 'home', label: 'Feed', path: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-                    { id: 'explore', label: 'Map', path: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
+                    { id: 'explore', label: 'Map', path: 'M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
                     { id: 'rating', label: 'Leaderboard', path: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
                     { id: 'tasks', label: 'Tasks', path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
                     { id: 'mycats', label: 'My Cats', path: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
@@ -405,13 +523,14 @@ export default function App() {
                         <div className="w-full pb-12">
                             {feedPosts.map((post) => {
                                 const userHandle = `@${post.author.toLowerCase().replace(/\s+/g, '_')}`;
+                                const visibleComments = post.isCommentsExpanded ? post.comments : post.comments.slice(-1);
 
                                 return (
                                 <article key={post.id} className="bg-white rounded-none sm:rounded-[24px] shadow-sm border-y sm:border border-gray-100 w-full overflow-hidden flex flex-col mb-6">
                                     <div className="p-4 flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-bold text-lg">
-                                                {post.author.charAt(0)}
+                                                {post.author.charAt(0).toUpperCase()}
                                             </div>
                                             <div className="leading-tight">
                                                 <h3 className="font-bold text-gray-900 text-[15px]">{post.author}</h3>
@@ -429,13 +548,12 @@ export default function App() {
 
                                     <div className="px-4 py-3 flex items-center justify-between">
                                         <div className="flex gap-4">
-                                            {/* PAW BUTTON */}
                                             <button onClick={() => handleLikePost(post.id)} className={`transition-transform active:scale-75 ${post.hasLiked ? 'text-[#d946ef]' : 'text-gray-300 hover:text-gray-400'}`}>
                                                 <svg className="w-[26px] h-[26px]" fill="currentColor" viewBox="0 0 24 24">
                                                     <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
                                                 </svg>
                                             </button>
-                                            <button onClick={() => toggleCommentInput(post.id)} className={`transition-transform active:scale-75 ${post.showCommentInput ? 'text-[#d946ef]' : 'text-gray-300 hover:text-gray-400'}`}>
+                                            <button onClick={() => toggleComments(post.id)} className={`transition-transform active:scale-75 ${post.showCommentInput ? 'text-[#d946ef]' : 'text-gray-300 hover:text-gray-400'}`}>
                                                 <svg className="w-[26px] h-[26px]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.03 2 11c0 2.822 1.488 5.334 3.93 6.947V22l4.137-2.285C10.67 19.897 11.325 20 12 20c5.523 0 10-4.03 10-9s-4.477-9-10-9z"/></svg>
                                             </button>
                                         </div>
@@ -449,27 +567,48 @@ export default function App() {
                                         </p>
                                     </div>
 
-                                    <div className="px-4 pb-4 space-y-2">
-                                        {post.comments.length > 0 && post.comments.map(comment => (
-                                            <div key={comment.id} className="flex justify-between items-start group">
-                                                <div className="text-[14px]">
-                                                    <span className="font-bold text-gray-900 mr-2">{comment.author}</span>
-                                                    {editingCommentId === comment.id ? (
-                                                        <div className="mt-1 flex flex-col items-end gap-2 w-full">
-                                                            <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full border-b border-[#d946ef] outline-none text-sm py-1 bg-transparent" />
-                                                            <div className="flex gap-2">
-                                                                <button onClick={handleCancelEdit} className="text-xs font-bold text-gray-400">Cancel</button>
-                                                                <button onClick={() => handleSaveEdit(post.id)} className="text-xs font-bold text-[#d946ef]">Save</button>
-                                                            </div>
-                                                        </div>
-                                                    ) : <span className="text-gray-700">{comment.text}</span>}
+                                    <div className={`px-4 pb-4 space-y-4 ${post.isCommentsExpanded ? 'max-h-[250px] overflow-y-auto overflow-x-hidden custom-scrollbar pr-2' : ''}`}>
+
+                                        {post.comments.length > 1 && !post.isCommentsExpanded && (
+                                            <button
+                                                onClick={() => toggleComments(post.id)}
+                                                className="text-sm font-medium text-gray-400 hover:text-[#d946ef] transition-colors"
+                                            >
+                                                View all {post.comments.length} comments
+                                            </button>
+                                        )}
+
+                                        {visibleComments.map(comment => (
+                                            <div key={comment.id} className="flex items-start gap-2.5 group">
+
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-fuchsia-100 to-purple-100 text-[#d946ef] flex items-center justify-center font-bold text-[13px] shrink-0 shadow-sm mt-0.5">
+                                                    {comment.author ? comment.author.charAt(0).toUpperCase() : '🐈'}
                                                 </div>
-                                                {comment.isMine && editingCommentId !== comment.id && (
-                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button onClick={() => startEditing(comment)} className="text-gray-400 hover:text-[#d946ef]"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
-                                                        <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-gray-400 hover:text-red-400"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+
+                                                <div className="flex-1">
+                                                    <div className="bg-gray-50 rounded-[20px] rounded-tl-sm px-3.5 py-2.5 relative">
+                                                        <span className="font-bold text-gray-900 text-[13px] block mb-0.5">{comment.author}</span>
+
+                                                        {editingCommentId === comment.id ? (
+                                                            <div className="mt-1 flex flex-col items-end gap-2 w-full">
+                                                                <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full border-b border-[#d946ef] outline-none text-sm py-1 bg-transparent" />
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={handleCancelEdit} className="text-xs font-bold text-gray-400">Cancel</button>
+                                                                    <button onClick={() => handleSaveEdit(post.id)} className="text-xs font-bold text-[#d946ef]">Save</button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-700 text-[14px] leading-snug break-words">{comment.text}</span>
+                                                        )}
                                                     </div>
-                                                )}
+
+                                                    {comment.isMine && editingCommentId !== comment.id && (
+                                                        <div className="flex items-center gap-3 mt-1.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={() => startEditing(comment)} className="text-[11px] font-bold text-gray-400 hover:text-[#d946ef]">Edit</button>
+                                                            <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-[11px] font-bold text-gray-400 hover:text-red-400">Delete</button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -493,14 +632,12 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* DYNAMIC LEADERBOARD TAB */}
                     {activeTab === 'rating' && (
                         <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100 w-full mb-12">
                             <h3 className="font-bold text-gray-900 text-xl mb-4 flex items-center gap-2">
                                 <span className="text-2xl">🏆</span> Fluffy Leaderboard
                             </h3>
 
-                            {/* Toggle Daily / Monthly */}
                             <div className="flex bg-gray-50 p-1 rounded-xl w-fit mb-6">
                                 <button
                                     onClick={() => setRatingPeriod('daily')}
@@ -548,7 +685,10 @@ export default function App() {
                     )}
 
                     {activeTab === 'addCat' && <AddCat onAdded={() => { setActiveTab('home'); window.location.reload(); }} />}
-                    {activeTab === 'tasks' && <TasksPage />}
+
+                    {/* 🚨 ОСЬ ВОНО: Рендеримо новий ізольований компонент! */}
+                    {activeTab === 'tasks' && <TasksPage BASE_URL={BASE_URL} />}
+
                     {activeTab === 'explore' && <ExploreMap isLoggedIn={isLoggedIn} setShowAuthModal={setShowAuthModal} />}
 
                     {activeTab === 'auth' && (
@@ -665,7 +805,7 @@ export default function App() {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
             </button>
             <button onClick={() => setActiveTab('explore')} className={`p-3 rounded-2xl transition-colors ${activeTab === 'explore' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
             <button onClick={() => { if(!isLoggedIn) return setShowAuthModal(true); setActiveTab('addCat'); }} className="bg-[#d946ef] text-white p-3.5 rounded-full shadow-[0_4px_14px_rgba(217,70,239,0.4)] -mt-8 border-4 border-[#fafafa] transition-transform active:scale-95">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg>
