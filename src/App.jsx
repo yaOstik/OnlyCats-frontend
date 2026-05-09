@@ -3,6 +3,31 @@ import Ads from './Ads';
 import AddCat from './AddCat';
 import ExploreMap from './ExploreMap';
 import TasksPage from './TasksPage';
+import RatingPage from './RatingPage';
+import ProfilePage from './ProfilePage';
+
+// --- РОЗУМНИЙ КОМПОНЕНТ АВАТАРКИ ---
+const UserAvatar = ({ userId, username, BASE_URL, className }) => {
+  const [hasError, setHasError] = useState(false);
+  const avatarUrl = userId ? `${BASE_URL}/profiles/${userId}/avatar` : null;
+
+  if (!avatarUrl || hasError) {
+    return (
+      <div className={`rounded-full bg-gradient-to-tr from-fuchsia-100 to-purple-50 text-[#d946ef] flex items-center justify-center font-black ${className}`}>
+        {username ? username.charAt(0).toUpperCase() : '🐈'}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={avatarUrl}
+      alt={username}
+      onError={() => setHasError(true)}
+      className={`rounded-full object-cover bg-white shadow-sm ${className}`}
+    />
+  );
+};
 
 // ==========================================
 // MAIN APP COMPONENT
@@ -18,10 +43,11 @@ export default function App() {
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [outOfLikesModal, setOutOfLikesModal] = useState(false);
   const [welcomeTitle, setWelcomeTitle] = useState('');
   const [welcomeDesc, setWelcomeDesc] = useState('');
 
-  const [ratingPeriod, setRatingPeriod] = useState('daily');
+  const [targetProfileId, setTargetProfileId] = useState(null);
 
   const BASE_URL = 'https://5fpeo7vj4m.execute-api.eu-north-1.amazonaws.com/Prod';
 
@@ -36,7 +62,6 @@ export default function App() {
     }
   };
 
-  // --- AUTH LOGIC ---
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     const endpoint = authMode === 'login' ? `${BASE_URL}/login` : `${BASE_URL}/register`;
@@ -88,7 +113,6 @@ export default function App() {
     window.location.reload();
   };
 
-  // --- FEED POSTS LOGIC ---
   const [feedPosts, setFeedPosts] = useState([]);
 
   const fetchFeedPosts = async () => {
@@ -123,6 +147,7 @@ export default function App() {
       const formattedPosts = postsData.map((post, index) => {
         const likesFromServer = post.rating_score || post.likes_count || post.likes || 0;
         const postAuthor = post.author_username || post.authorUsername || post.username || post.owner?.username || "Incognito Cat";
+        const actualUserId = post.user_id || post.userId || post.owner?.id;
 
         const rawComments = allCommentsData[index] || [];
         const formattedComments = rawComments.map(c => {
@@ -130,6 +155,7 @@ export default function App() {
             const authorName = c.author_username || c.authorUsername || c.username || (isMine ? (myLocalName || "You") : `User ${c.user_id}`);
             return {
                 id: c.id,
+                userId: c.user_id,
                 author: authorName,
                 text: c.content,
                 isMine: isMine
@@ -138,9 +164,10 @@ export default function App() {
 
         return {
           id: post.id,
+          userId: actualUserId,
           author: postAuthor,
           catName: post.title || "Fluffy",
-          age: post.cat_age !== undefined && post.cat_age !== null ? `${post.cat_age} y.o.` : "Age unknown",
+          age: post.cat_age,
           image: post.image_url || "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
           description: post.content || "",
           likes: likesFromServer,
@@ -164,34 +191,19 @@ export default function App() {
     fetchFeedPosts();
   }, [isLoggedIn]);
 
-  // --- LEADERBOARD LOGIC ---
-  const now = new Date();
+  const widgetTopCats = [...feedPosts]
+    .filter(p => p.likes > 0)
+    .sort((a, b) => b.likes - a.likes)
+    .slice(0, 3)
+    .map((post, index) => {
+        let style = { color: 'text-gray-500', bg: 'bg-gray-100', ring: 'ring-gray-200' };
+        if (index === 0) style = { color: 'text-yellow-700', bg: 'bg-yellow-100', ring: 'ring-yellow-400' };
+        if (index === 1) style = { color: 'text-gray-700', bg: 'bg-gray-200', ring: 'ring-gray-300' };
+        if (index === 2) style = { color: 'text-orange-800', bg: 'bg-orange-100', ring: 'ring-orange-300' };
 
-  const formatRank = (post, index) => {
-      let trend = '';
-      let color = 'text-gray-400';
-      if (index === 0 && post.likes > 0) { trend = '👑 Leader'; color = 'text-yellow-500'; }
-      else if (index > 0 && index < 3 && post.likes > 0) { trend = '🔥 Hot'; color = 'text-orange-500'; }
-      else if (post.likes > 0) { trend = '🐾 Rising'; color = 'text-[#d946ef]'; }
+        return { ...post, rank: index + 1, style };
+    });
 
-      return {
-          id: post.id,
-          rank: index + 1,
-          name: post.catName,
-          owner: `@${post.author.toLowerCase().replace(/\s+/g, '_')}`,
-          paws: post.likes,
-          trend: trend,
-          color: color,
-          img: post.image
-      };
-  };
-
-  const dailyCats = [...feedPosts].filter(post => (now - new Date(post.createdAt)) < 24 * 60 * 60 * 1000).sort((a, b) => b.likes - a.likes).map(formatRank);
-  const monthlyCats = [...feedPosts].filter(post => (now - new Date(post.createdAt)) < 30 * 24 * 60 * 60 * 1000).sort((a, b) => b.likes - a.likes).map(formatRank);
-  const widgetTopCats = dailyCats.slice(0, 3);
-  const displayLeaderboard = ratingPeriod === 'daily' ? dailyCats : monthlyCats;
-
-  // --- LIKES LOGIC ---
   const handleLikePost = async (postId) => {
     if (!isLoggedIn) return setShowAuthModal(true);
 
@@ -219,7 +231,11 @@ export default function App() {
       const response = await fetch(url, { method, headers, body });
 
       if (!response.ok) {
-        if (response.status === 401) alert("Your session expired. Please log out and log in again! 🐾");
+        if (response.status === 403) {
+            setOutOfLikesModal(true);
+        } else if (response.status === 401) {
+            alert("Your session expired. Please log out and log in again! 🐾");
+        }
         throw new Error(`Server error: ${response.status}`);
       }
     } catch (error) {
@@ -230,9 +246,6 @@ export default function App() {
     }
   };
 
-  // ==========================================
-  // --- COMMENTS LOGIC ---
-  // ==========================================
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
 
@@ -260,6 +273,7 @@ export default function App() {
 
                     return {
                         id: c.id,
+                        userId: c.user_id,
                         author: authorName,
                         text: c.content,
                         isMine: isMine
@@ -286,12 +300,13 @@ export default function App() {
 
     const tempId = Date.now();
     const myLocalName = localStorage.getItem('username') || "You";
+    const myUserId = getMyUserId();
 
     setFeedPosts(posts => posts.map(p => {
       if (p.id === postId) {
         return {
             ...p,
-            comments: [...p.comments, { id: tempId, author: myLocalName, text: text, isMine: true }],
+            comments: [...p.comments, { id: tempId, userId: myUserId, author: myLocalName, text: text, isMine: true }],
             newCommentText: "",
             isCommentsExpanded: true
         };
@@ -396,18 +411,23 @@ export default function App() {
           case 'explore': return 'Explore Map';
           case 'tasks': return 'Daily Tasks';
           case 'rating': return 'Leaderboard';
-          case 'mycats': return 'My Cats';
-          case 'profile': return 'My Profile';
+          case 'profile': return targetProfileId ? 'User Profile' : 'My Profile';
           case 'auth': return 'Join Us';
           case 'addCat': return 'Post a Cat';
           default: return 'OnlyCats';
       }
   }
 
-  return (
-    <div className="flex h-screen bg-[#fafafa] font-sans relative text-gray-800">
+  // 🐾 СУЦІЛЬНА КЛАСИЧНА ЛАПКА ЯК НА СКРІНШОТІ
+  const PawIcon = ({ className }) => (
+    <svg viewBox="0 0 512 512" fill="currentColor" className={className || "w-6 h-6"}>
+        <path d="M226.5 92.9c14.3 7.3 28.9 23 39.5 44.9 10.6-21.9 25.2-37.6 39.5-44.9 16.8-8.6 36.1-9.5 50.8-3.4 18.2 7.5 28.8 25.4 30.7 44.9 1.7 17.5-6.8 35.1-20.7 48.7-18.7 18.3-48 29.8-80.3 35.4-32.3-5.6-61.6-17.1-80.3-35.4-13.9-13.6-22.4-31.2-20.7-48.7 1.9-19.5 12.5-37.4 30.7-44.9 14.7-6.1 34-.5 50.8 3.4zM96.7 167.3c15-6.2 34.3-.5 51.1 8 14.3 7.3 28.9 23 39.5 44.9-20.6 8.3-39 21.6-53.1 39-16.1-23.7-39.6-43.2-64.8-55-13.9-6.5-22.4-24.1-20.7-41.6 1.9-19.5 12.5-37.4 30.7-44.9 5.8-2.4 11.9-3 17.3-2.9v-7.5zm318.6 0c15-6.2 34.3-.5 51.1 8 18.2 7.5 28.8 25.4 30.7 44.9 1.7 17.5-6.8 35.1-20.7 48.7-18.7 18.3-48 29.8-80.3 35.4-14.1-17.4-32.5-30.7-53.1-39 10.6-21.9 25.2-37.6 39.5-44.9 16.8-8.6 36.1-9.5 50.8-3.4-6.1-2.4-12.2-3-18-2.9v-7.5zM256 304.5c42.4 0 83.2 16.4 115.1 46.5 26.2 24.7 43.1 57.3 48.3 93.3 2.1 14.3-10.4 25.7-24.9 25.7H117.5c-14.5 0-27-11.4-24.9-25.7 5.2-36 22.1-68.6 48.3-93.3 31.9-30.1 72.7-46.5 115.1-46.5z"/>
+    </svg>
+  );
 
-        {/* --- GLOBAL STYLES ДЛЯ КОРПОРАТИВНОГО СКРОЛУ --- */}
+  return (
+    <div className="flex h-screen bg-[#f3f4f6] font-sans relative text-gray-800 selection:bg-fuchsia-200">
+
         <style>
         {`
             .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -417,18 +437,15 @@ export default function App() {
         `}
         </style>
 
-        {/* ======================================= */}
         {/* 1. LEFT SIDEBAR */}
-        {/* ======================================= */}
-        <div className="w-[260px] bg-white flex flex-col hidden md:flex shrink-0 z-10 border-r border-gray-100">
+        <div className="w-[260px] bg-white flex flex-col hidden md:flex shrink-0 z-10 border-r border-gray-100 shadow-[2px_0_15px_rgba(0,0,0,0.02)]">
 
+            {/* 🚨 ТУТ ТОЧНО ТАКЕ ЛОГО ЯК НА СКРІНШОТІ */}
             <div className="p-6 pt-8 pb-8 flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#d946ef] rounded-xl flex items-center justify-center text-white shadow-sm">
-                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
-                   </svg>
+                <div className="w-[42px] h-[42px] bg-[#d946ef] rounded-[12px] flex items-center justify-center text-white shadow-sm shrink-0">
+                   <PawIcon className="w-[22px] h-[22px]" />
                 </div>
-                <h1 className="text-[22px] font-black tracking-tight text-gray-900">OnlyCats</h1>
+                <h1 className="text-[24px] font-black tracking-tight text-[#0f172a] mt-0.5">OnlyCats</h1>
             </div>
 
             <nav className="flex-1 px-4 space-y-1">
@@ -437,19 +454,21 @@ export default function App() {
                     { id: 'explore', label: 'Map', path: 'M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
                     { id: 'rating', label: 'Leaderboard', path: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
                     { id: 'tasks', label: 'Tasks', path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
-                    { id: 'mycats', label: 'My Cats', path: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
                     { id: 'profile', label: 'Profile', path: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' }
                 ].map(item => {
                     const isActive = activeTab === item.id;
                     return (
                         <button
                             key={item.id}
-                            onClick={() => setActiveTab(item.id)}
-                            className={`w-full flex items-center gap-4 px-5 py-3 rounded-2xl font-bold transition-all ${
-                                isActive ? 'bg-[#fdf4ff] text-[#d946ef]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                            onClick={() => {
+                                if (item.id === 'profile') setTargetProfileId(null);
+                                setActiveTab(item.id);
+                            }}
+                            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-[18px] font-bold transition-all ${
+                                isActive && (!targetProfileId || item.id !== 'profile') ? 'bg-[#fdf4ff] text-[#d946ef] shadow-sm border border-fuchsia-50' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 border border-transparent'
                             }`}
                         >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={item.path}></path>
                             </svg>
                             {item.label}
@@ -464,9 +483,9 @@ export default function App() {
                         if (!isLoggedIn) return setShowAuthModal(true);
                         setActiveTab('addCat');
                     }}
-                    className="w-full bg-[#d946ef] hover:bg-[#c026d3] text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5"
+                    className="w-full bg-[#d946ef] hover:bg-[#c026d3] text-white font-bold py-4 px-4 rounded-[18px] flex items-center justify-center gap-3 transition-transform hover:-translate-y-1 shadow-[0_4px_15px_rgba(217,70,239,0.3)]"
                 >
-                    <div className="w-5 h-5 rounded-full bg-white text-[#d946ef] flex items-center justify-center text-lg font-black leading-none pb-0.5">+</div>
+                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-lg font-black leading-none pb-0.5">+</div>
                     Post Cat
                 </button>
 
@@ -476,10 +495,10 @@ export default function App() {
                     </button>
                 ) : (
                     <div className="mt-4 flex flex-col gap-2">
-                        <button onClick={() => { setActiveTab('auth'); setAuthMode('register'); }} className="w-full text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 py-2.5 rounded-lg transition-colors">
+                        <button onClick={() => { setActiveTab('auth'); setAuthMode('register'); }} className="w-full text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 py-3 rounded-xl transition-colors">
                             Sign Up
                         </button>
-                        <button onClick={() => { setActiveTab('auth'); setAuthMode('login'); }} className="w-full text-sm font-bold text-[#d946ef] bg-[#fdf4ff] hover:bg-fuchsia-100 py-2.5 rounded-lg transition-colors">
+                        <button onClick={() => { setActiveTab('auth'); setAuthMode('login'); }} className="w-full text-sm font-bold text-[#d946ef] bg-[#fdf4ff] hover:bg-fuchsia-100 py-3 rounded-xl transition-colors">
                             Log In
                         </button>
                     </div>
@@ -487,123 +506,167 @@ export default function App() {
             </div>
         </div>
 
-        {/* ======================================= */}
-        {/* 2. MAIN CONTENT AREA & WIDGETS */}
-        {/* ======================================= */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 2. MAIN CONTENT AREA */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
 
-            <header className="h-[80px] hidden md:flex items-center justify-between px-8 shrink-0 bg-[#fafafa] z-10">
-                <h2 className="text-[22px] font-bold text-gray-900">{getTabTitle()}</h2>
+            {/* ДЕСКТОП ХІДЕР */}
+            <header className="h-[80px] hidden md:flex items-center justify-between px-8 shrink-0 bg-transparent z-10">
+                <h2 className="text-[24px] font-black text-gray-900 tracking-tight">{getTabTitle()}</h2>
                 <div className="flex items-center gap-5">
-                    <button className="text-gray-400 hover:text-[#d946ef] transition-colors"><svg className="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button>
-                    <button className="text-gray-400 hover:text-[#d946ef] transition-colors relative">
-                        <svg className="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                        <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#d946ef] border-2 border-[#fafafa] rounded-full"></div>
+                    <button className="text-gray-400 hover:text-[#d946ef] transition-colors bg-white p-2.5 rounded-full shadow-sm border border-gray-100"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button>
+                    <button className="text-gray-400 hover:text-[#d946ef] transition-colors relative bg-white p-2.5 rounded-full shadow-sm border border-gray-100">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#d946ef] border-2 border-white rounded-full"></div>
                     </button>
                 </div>
             </header>
 
-            <div className="flex-1 flex overflow-y-auto px-0 md:px-8 pb-24 md:pb-8">
+            {/* 📱 МОБАЙЛ-ХІДЕР */}
+            <div className="md:hidden sticky top-0 z-40 bg-white/80 backdrop-blur-xl px-5 py-3 shadow-[0_2px_15px_rgba(0,0,0,0.03)] flex items-center justify-between">
 
-                <main className="flex-1 max-w-[600px] w-full mx-auto flex flex-col">
-
-                    <div className="md:hidden flex items-center justify-between bg-white p-4 shadow-sm border-b border-gray-100 mb-4 sticky top-0 z-20">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-[#d946ef] rounded-lg flex items-center justify-center text-white">
-                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/></svg>
-                            </div>
-                            <h1 className="text-xl font-black text-gray-900 tracking-tight">OnlyCats</h1>
-                        </div>
-                        {!isLoggedIn && (
-                            <button onClick={() => setShowAuthModal(true)} className="text-sm font-bold text-[#d946ef] bg-[#fdf4ff] px-3 py-1.5 rounded-lg">Log In</button>
-                        )}
+                {/* 🚨 ТУТ ТОЧНО ТАКЕ ЛОГО ЯК НА СКРІНШОТІ */}
+                <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 bg-[#d946ef] rounded-[8px] flex items-center justify-center text-white shadow-sm shrink-0">
+                        <PawIcon className="w-4 h-4" />
                     </div>
+                    <h1 className="text-[20px] font-black text-[#0f172a] tracking-tight mt-0.5">OnlyCats</h1>
+                </div>
 
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('explore')}
+                        className={`p-2 rounded-full transition-colors ${activeTab === 'explore' ? 'text-[#d946ef] bg-fuchsia-50' : 'text-gray-400 hover:bg-gray-50'}`}
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
+                    {!isLoggedIn && (
+                        <button onClick={() => setShowAuthModal(true)} className="text-[13px] font-bold text-[#d946ef] bg-[#fdf4ff] px-4 py-2 rounded-xl">Log In</button>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex-1 flex overflow-y-auto px-0 md:px-8 pb-32 md:pb-8 pt-4 md:pt-0">
+
+                <main className="flex-1 max-w-[620px] w-full mx-auto flex flex-col">
+
+                    {/* DYNAMIC ROUTING */}
                     {activeTab === 'home' && (
-                        <div className="w-full pb-12">
+                        <div className="w-full space-y-6 md:space-y-8">
                             {feedPosts.map((post) => {
                                 const userHandle = `@${post.author.toLowerCase().replace(/\s+/g, '_')}`;
                                 const visibleComments = post.isCommentsExpanded ? post.comments : post.comments.slice(-1);
 
                                 return (
-                                <article key={post.id} className="bg-white rounded-none sm:rounded-[24px] shadow-sm border-y sm:border border-gray-100 w-full overflow-hidden flex flex-col mb-6">
-                                    <div className="p-4 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-bold text-lg">
-                                                {post.author.charAt(0).toUpperCase()}
-                                            </div>
+                                <article key={post.id} className="bg-white mx-3 sm:mx-0 rounded-[28px] sm:rounded-[32px] shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 w-auto sm:w-full overflow-hidden flex flex-col">
+
+                                    {/* ХІДЕР ПОСТА */}
+                                    <div className="px-5 py-4 flex items-center justify-between">
+                                        <div
+                                            className="flex items-center gap-3 cursor-pointer group"
+                                            onClick={() => { setTargetProfileId(post.userId); setActiveTab('profile'); }}
+                                        >
+                                            <UserAvatar
+                                                userId={post.userId}
+                                                username={post.author}
+                                                BASE_URL={BASE_URL}
+                                                className="w-11 h-11 text-lg group-hover:ring-2 ring-[#d946ef] ring-offset-2 transition-all"
+                                            />
                                             <div className="leading-tight">
-                                                <h3 className="font-bold text-gray-900 text-[15px]">{post.author}</h3>
+                                                <h3 className="font-bold text-gray-900 text-[15px] group-hover:text-[#d946ef] transition-colors">{post.author}</h3>
                                                 <p className="text-gray-400 text-[13px] font-medium">{userHandle}</p>
                                             </div>
                                         </div>
-                                        <button className="text-gray-400 hover:text-gray-900 transition-colors p-2">
+                                        <button className="text-gray-400 hover:text-gray-900 transition-colors p-2 rounded-full hover:bg-gray-50">
                                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" /></svg>
                                         </button>
                                     </div>
 
-                                    <div className="w-full bg-gray-50 relative cursor-pointer" onDoubleClick={() => handleLikePost(post.id)}>
-                                        <img src={post.image} alt={post.catName} className="w-full object-cover max-h-[600px]" />
+                                    {/* ФОТО КОТИКА */}
+                                    <div className="w-full bg-gray-50 relative cursor-pointer sm:px-2" onDoubleClick={() => handleLikePost(post.id)}>
+                                        <img src={post.image} alt={post.catName} className="w-full rounded-[16px] sm:rounded-[24px] object-cover max-h-[600px] shadow-sm" />
                                     </div>
 
-                                    <div className="px-4 py-3 flex items-center justify-between">
+                                    {/* ПАНЕЛЬ ІНСТРУМЕНТІВ */}
+                                    <div className="px-5 py-3 flex items-center justify-between mt-1">
                                         <div className="flex gap-4">
-                                            <button onClick={() => handleLikePost(post.id)} className={`transition-transform active:scale-75 ${post.hasLiked ? 'text-[#d946ef]' : 'text-gray-300 hover:text-gray-400'}`}>
-                                                <svg className="w-[26px] h-[26px]" fill="currentColor" viewBox="0 0 24 24">
-                                                    <path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/>
+                                            <button onClick={() => handleLikePost(post.id)} className={`transition-all active:scale-75 hover:-translate-y-0.5 ${post.hasLiked ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`}>
+                                                <svg className="w-[30px] h-[30px] drop-shadow-sm" fill={post.hasLiked ? "currentColor" : "none"} stroke={post.hasLiked ? "currentColor" : "currentColor"} strokeWidth={post.hasLiked ? "0" : "2"} viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                                                 </svg>
                                             </button>
-                                            <button onClick={() => toggleComments(post.id)} className={`transition-transform active:scale-75 ${post.showCommentInput ? 'text-[#d946ef]' : 'text-gray-300 hover:text-gray-400'}`}>
-                                                <svg className="w-[26px] h-[26px]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.03 2 11c0 2.822 1.488 5.334 3.93 6.947V22l4.137-2.285C10.67 19.897 11.325 20 12 20c5.523 0 10-4.03 10-9s-4.477-9-10-9z"/></svg>
+                                            <button onClick={() => toggleComments(post.id)} className={`transition-all active:scale-75 hover:-translate-y-0.5 ${post.showCommentInput ? 'text-[#d946ef]' : 'text-gray-300 hover:text-[#d946ef]'}`}>
+                                                <svg className="w-[30px] h-[30px] drop-shadow-sm" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div className="px-4 pb-4 flex flex-col gap-1.5">
-                                        <p className="font-bold text-gray-900 text-sm">{post.likes} paws</p>
-                                        <p className="text-gray-800 text-[14px] leading-snug">
-                                            <span className="font-bold text-gray-900 mr-2">{post.author}</span>
-                                            {post.description}
+                                    {/* ІНФОРМАЦІЯ ПРО КОТИКА */}
+                                    <div className="px-5 pb-4 flex flex-col gap-2">
+                                        <p className="font-black text-gray-900 text-[15px] flex items-center gap-1">
+                                            {post.likes} {post.likes === 1 ? 'star' : 'stars'} <span className="text-yellow-400">⭐</span>
                                         </p>
+
+                                        <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex flex-col gap-1.5 mt-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-[17px] text-gray-900 tracking-tight">{post.catName}</span>
+                                                {post.age && post.age !== "Age unknown" && (
+                                                    <span className="bg-white border border-fuchsia-100 text-[#d946ef] text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg shadow-sm">
+                                                        {post.age}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {post.description && (
+                                                <p className="text-gray-700 text-[14px] leading-relaxed">
+                                                    {post.description}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    <div className={`px-4 pb-4 space-y-4 ${post.isCommentsExpanded ? 'max-h-[250px] overflow-y-auto overflow-x-hidden custom-scrollbar pr-2' : ''}`}>
-
+                                    {/* СЕКЦІЯ КОМЕНТАРІВ */}
+                                    <div className={`px-5 pb-5 space-y-4 ${post.isCommentsExpanded ? 'max-h-[300px] overflow-y-auto overflow-x-hidden custom-scrollbar pr-3' : ''}`}>
                                         {post.comments.length > 1 && !post.isCommentsExpanded && (
                                             <button
                                                 onClick={() => toggleComments(post.id)}
-                                                className="text-sm font-medium text-gray-400 hover:text-[#d946ef] transition-colors"
+                                                className="text-[13px] font-bold text-gray-400 hover:text-[#d946ef] transition-colors uppercase tracking-wider"
                                             >
                                                 View all {post.comments.length} comments
                                             </button>
                                         )}
 
                                         {visibleComments.map(comment => (
-                                            <div key={comment.id} className="flex items-start gap-2.5 group">
-
-                                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-fuchsia-100 to-purple-100 text-[#d946ef] flex items-center justify-center font-bold text-[13px] shrink-0 shadow-sm mt-0.5">
-                                                    {comment.author ? comment.author.charAt(0).toUpperCase() : '🐈'}
-                                                </div>
+                                            <div key={comment.id} className="flex items-start gap-3 group">
+                                                <UserAvatar
+                                                    userId={comment.userId}
+                                                    username={comment.author}
+                                                    BASE_URL={BASE_URL}
+                                                    className="w-9 h-9 text-[13px] shrink-0 mt-0.5"
+                                                />
 
                                                 <div className="flex-1">
-                                                    <div className="bg-gray-50 rounded-[20px] rounded-tl-sm px-3.5 py-2.5 relative">
-                                                        <span className="font-bold text-gray-900 text-[13px] block mb-0.5">{comment.author}</span>
+                                                    <div className="bg-gray-50 rounded-[20px] rounded-tl-sm px-4 py-3 relative border border-transparent group-hover:border-gray-100 transition-colors">
+                                                        <span
+                                                            className="font-bold text-gray-900 text-[13px] block mb-1 cursor-pointer hover:text-[#d946ef] transition-colors"
+                                                            onClick={() => { setTargetProfileId(comment.userId); setActiveTab('profile'); }}
+                                                        >
+                                                            {comment.author}
+                                                        </span>
 
                                                         {editingCommentId === comment.id ? (
                                                             <div className="mt-1 flex flex-col items-end gap-2 w-full">
-                                                                <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full border-b border-[#d946ef] outline-none text-sm py-1 bg-transparent" />
-                                                                <div className="flex gap-2">
-                                                                    <button onClick={handleCancelEdit} className="text-xs font-bold text-gray-400">Cancel</button>
-                                                                    <button onClick={() => handleSaveEdit(post.id)} className="text-xs font-bold text-[#d946ef]">Save</button>
+                                                                <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className="w-full border-b-2 border-[#d946ef] outline-none text-sm py-1 bg-transparent font-medium" />
+                                                                <div className="flex gap-3 mt-1">
+                                                                    <button onClick={handleCancelEdit} className="text-xs font-bold text-gray-400 hover:text-gray-600">Cancel</button>
+                                                                    <button onClick={() => handleSaveEdit(post.id)} className="text-xs font-black text-[#d946ef] hover:text-[#c026d3]">Save</button>
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-gray-700 text-[14px] leading-snug break-words">{comment.text}</span>
+                                                            <span className="text-gray-700 text-[14px] leading-snug break-words font-medium">{comment.text}</span>
                                                         )}
                                                     </div>
 
                                                     {comment.isMine && editingCommentId !== comment.id && (
-                                                        <div className="flex items-center gap-3 mt-1.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="flex items-center gap-4 mt-2 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <button onClick={() => startEditing(comment)} className="text-[11px] font-bold text-gray-400 hover:text-[#d946ef]">Edit</button>
                                                             <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-[11px] font-bold text-gray-400 hover:text-red-400">Delete</button>
                                                         </div>
@@ -614,85 +677,41 @@ export default function App() {
                                     </div>
 
                                     {post.showCommentInput && (
-                                        <div className="px-4 py-3 border-t border-gray-50">
-                                            <form onSubmit={(e) => handleAddCommentToPost(e, post.id)} className="flex gap-2">
-                                                <input type="text" autoFocus value={post.newCommentText} onChange={(e) => handleCommentChange(post.id, e.target.value)} placeholder="Add a comment..." className="flex-1 text-sm outline-none placeholder-gray-400 bg-transparent" />
-                                                <button type="submit" className={`text-sm font-bold ${post.newCommentText.trim() ? 'text-[#d946ef]' : 'text-purple-200'}`}>Post</button>
+                                        <div className="px-5 py-4 border-t border-gray-50 bg-gray-50/50">
+                                            <form onSubmit={(e) => handleAddCommentToPost(e, post.id)} className="flex items-center gap-3">
+                                                <UserAvatar
+                                                    userId={getMyUserId()}
+                                                    username={localStorage.getItem('username')}
+                                                    BASE_URL={BASE_URL}
+                                                    className="w-8 h-8 text-[12px] shrink-0"
+                                                />
+                                                <input type="text" autoFocus value={post.newCommentText} onChange={(e) => handleCommentChange(post.id, e.target.value)} placeholder="Add a fluffy comment..." className="flex-1 text-[15px] font-medium outline-none placeholder-gray-400 bg-transparent" />
+                                                <button type="submit" className={`text-[15px] font-black tracking-wide ${post.newCommentText.trim() ? 'text-[#d946ef]' : 'text-fuchsia-200'}`}>Post</button>
                                             </form>
                                         </div>
                                     )}
                                 </article>
                             )})}
 
-                            <div className="text-center py-10">
-                                <span className="text-4xl block mb-3 opacity-80">🐈</span>
-                                <p className="text-gray-400 font-bold text-lg">Meow! You're all caught up for today.</p>
-                                <p className="text-gray-400 text-sm mt-1">Come back later for a fresh batch of fluffiness 🐾</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'rating' && (
-                        <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100 w-full mb-12">
-                            <h3 className="font-bold text-gray-900 text-xl mb-4 flex items-center gap-2">
-                                <span className="text-2xl">🏆</span> Fluffy Leaderboard
-                            </h3>
-
-                            <div className="flex bg-gray-50 p-1 rounded-xl w-fit mb-6">
-                                <button
-                                    onClick={() => setRatingPeriod('daily')}
-                                    className={`px-5 py-1.5 rounded-lg text-sm font-bold transition-all ${ratingPeriod === 'daily' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                                >
-                                    Daily
-                                </button>
-                                <button
-                                    onClick={() => setRatingPeriod('monthly')}
-                                    className={`px-5 py-1.5 rounded-lg text-sm font-bold transition-all ${ratingPeriod === 'monthly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                                >
-                                    Monthly
-                                </button>
-                            </div>
-
-                            {displayLeaderboard.length === 0 ? (
-                                <p className="text-center text-gray-500 py-10">Leaderboard is empty. Be the first to post a cat! 🐾</p>
-                            ) : (
-                                <div className="space-y-5">
-                                    {displayLeaderboard.map(cat => (
-                                        <div key={cat.id} className="flex items-center gap-4 border-b border-gray-50 pb-4 last:border-0 last:pb-0">
-                                            <span className={`font-black w-6 text-center text-lg ${cat.rank === 1 ? 'text-yellow-500' : cat.rank === 2 ? 'text-gray-400' : cat.rank === 3 ? 'text-orange-400' : 'text-gray-300'}`}>
-                                                #{cat.rank}
-                                            </span>
-
-                                            <img src={cat.img} alt={cat.name} className={`w-14 h-14 rounded-2xl object-cover shadow-sm ${cat.rank === 1 ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`} />
-
-                                            <div className="flex-1">
-                                                <div className="font-bold text-gray-900 text-[16px]">
-                                                    {cat.name} <span className="text-gray-400 font-medium text-[13px] ml-1">{cat.owner}</span>
-                                                </div>
-                                                <div className="text-[14px] text-gray-600 font-bold flex items-center gap-1 mt-0.5">
-                                                    <svg className="w-3.5 h-3.5 text-[#d946ef]" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/></svg>
-                                                    {cat.paws} paws
-                                                </div>
-                                            </div>
-                                            <span className={`text-[12px] font-black uppercase tracking-wide bg-gray-50 px-2 py-1 rounded-lg ${cat.color}`}>
-                                                {cat.trend}
-                                            </span>
-                                        </div>
-                                    ))}
+                            <div className="text-center py-6 pb-10">
+                                <div className="text-gray-300 flex justify-center mb-4">
+                                    <div className="w-12 h-12 bg-gray-100 rounded-[12px] flex items-center justify-center text-gray-300 shadow-sm shrink-0">
+                                        <PawIcon className="w-6 h-6" />
+                                    </div>
                                 </div>
-                            )}
+                                <p className="text-gray-400 font-bold text-[15px]">Meow! You're all caught up.</p>
+                            </div>
                         </div>
                     )}
 
                     {activeTab === 'addCat' && <AddCat onAdded={() => { setActiveTab('home'); window.location.reload(); }} />}
-
-                    {/* 🚨 ОСЬ ВОНО: Рендеримо новий ізольований компонент! */}
                     {activeTab === 'tasks' && <TasksPage BASE_URL={BASE_URL} />}
-
+                    {activeTab === 'rating' && <RatingPage BASE_URL={BASE_URL} />}
+                    {activeTab === 'profile' && <ProfilePage BASE_URL={BASE_URL} targetUserId={targetProfileId} />}
                     {activeTab === 'explore' && <ExploreMap isLoggedIn={isLoggedIn} setShowAuthModal={setShowAuthModal} />}
 
                     {activeTab === 'auth' && (
-                        <div className="bg-white p-8 rounded-[24px] shadow-sm border border-gray-100 w-full mt-4">
+                        <div className="bg-white mx-3 sm:mx-0 p-8 rounded-[32px] shadow-sm border border-gray-100 w-auto mt-4">
                             <h2 className="text-2xl font-black text-center text-gray-900 mb-6">{authMode === 'login' ? 'Welcome Back! 🐈' : 'Create a Fluffy Account 🐾'}</h2>
                             <form className="space-y-4" onSubmit={handleAuthSubmit}>
                                 {authMode === 'register' && <div><label className="block text-sm font-bold text-gray-700 mb-1">Your Name / Username</label><input type="text" required value={authName} onChange={(e) => setAuthName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:border-[#d946ef]" /></div>}
@@ -706,116 +725,164 @@ export default function App() {
                         </div>
                     )}
 
-                    {activeTab === 'mycats' && <h2 className="text-2xl font-bold text-gray-400 text-center mt-10">Your Fluffies (In Dev)</h2>}
-                    {activeTab === 'profile' && <h2 className="text-2xl font-bold text-gray-400 text-center mt-10">Your Profile (In Dev)</h2>}
                     {activeTab === 'ads' && <Ads />}
 
                 </main>
 
-                {/* 2.2. RIGHT WIDGETS (DESKTOP) */}
-                <aside className="w-[300px] ml-8 hidden lg:block shrink-0 pt-0">
+                <aside className="w-[320px] ml-8 hidden lg:block shrink-0 pt-0">
+                    <div className="bg-white rounded-[32px] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 relative overflow-hidden">
 
-                    <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
-                        <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2">
-                            <span className="text-xl">🏆</span> Top Cats Today
+                        <div className="absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br from-yellow-100 to-orange-50 rounded-full opacity-60 blur-2xl pointer-events-none"></div>
+
+                        <h3 className="font-black text-gray-900 mb-5 flex items-center gap-2 text-[18px] relative z-10">
+                            <span className="text-xl">🏆</span> Fluffy League
                         </h3>
 
                         {widgetTopCats.length === 0 ? (
-                            <p className="text-gray-400 text-sm italic">Loading leaders...</p>
+                            <div className="text-center py-6 relative z-10">
+                                <p className="text-gray-400 text-sm font-medium">No ratings yet.</p>
+                            </div>
                         ) : (
-                            <div className="space-y-4">
-                                {widgetTopCats.map(cat => (
-                                    <div key={cat.id} className="flex items-center gap-3">
-                                        <span className="text-gray-400 font-bold text-sm w-4">{cat.rank}</span>
-                                        <img src={cat.img} alt={cat.name} className="w-10 h-10 rounded-xl object-cover" />
-                                        <div className="flex-1">
-                                            <div className="font-bold text-gray-900 text-sm leading-tight">{cat.name}</div>
-                                            <div className="text-[11px] text-gray-400 flex items-center gap-0.5 mt-0.5">
-                                               <svg className="w-2.5 h-2.5 text-[#d946ef]" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/></svg>
-                                               {cat.paws}
+                            <div className="space-y-4 relative z-10">
+                                {widgetTopCats.map((cat, index) => (
+                                    <div
+                                      key={cat.id}
+                                      onClick={() => { setTargetProfileId(cat.userId); setActiveTab('profile'); }}
+                                      className="flex items-center gap-3 group cursor-pointer p-2 -mx-2 rounded-2xl hover:bg-gray-50 transition-colors"
+                                    >
+                                        <div className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center font-black text-[13px] shadow-sm ${cat.style.bg} ${cat.style.color}`}>
+                                            {cat.rank}
+                                        </div>
+
+                                        <div className="relative">
+                                            {index === 0 && <span className="absolute -top-3 -right-2 text-sm z-10 drop-shadow-sm">👑</span>}
+                                            <img src={cat.image} alt={cat.catName} className="w-12 h-12 rounded-[14px] object-cover shadow-sm group-hover:scale-105 transition-transform duration-300" />
+                                        </div>
+
+                                        <div className="flex-1 min-w-0 ml-1">
+                                            <div className="font-black text-gray-900 text-[15px] leading-tight truncate group-hover:text-[#d946ef] transition-colors">{cat.catName}</div>
+                                            <div className="text-[12px] text-gray-500 font-bold flex items-center gap-1 mt-0.5">
+                                                <span className="text-yellow-400 text-sm">⭐</span>
+                                                {cat.likes} stars
                                             </div>
                                         </div>
-                                        <span className={`text-[11px] font-bold ${cat.color}`}>{cat.trend}</span>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        <button onClick={() => setActiveTab('rating')} className="w-full mt-6 text-[#d946ef] font-bold text-sm hover:underline">
-                            View Full Leaderboard
+                        <button
+                            onClick={() => setActiveTab('rating')}
+                            className="w-full mt-6 bg-gradient-to-r from-yellow-50 to-orange-50 text-yellow-700 border border-yellow-100 font-black tracking-wide py-3.5 rounded-xl transition-all hover:shadow-md active:scale-95 text-sm relative z-10"
+                        >
+                            View Leaderboard
                         </button>
                     </div>
 
-                    <div className="mt-6 px-2">
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[12px] text-gray-400 mb-3">
-                            <a href="#" className="hover:text-gray-600">About</a>
-                            <a href="#" className="hover:text-gray-600">Help</a>
-                            <a href="#" className="hover:text-gray-600">Privacy</a>
-                            <a href="#" className="hover:text-gray-600">Terms</a>
+                    <div className="mt-6 px-4 text-center">
+                        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[12px] font-bold text-gray-300 mb-3">
+                            <a href="#" className="hover:text-gray-500 transition-colors">About</a>
+                            <a href="#" className="hover:text-gray-500 transition-colors">Help</a>
+                            <a href="#" className="hover:text-gray-500 transition-colors">Privacy</a>
+                            <a href="#" className="hover:text-gray-500 transition-colors">Terms</a>
                         </div>
-                        <p className="text-[12px] text-gray-400">© 2024 OnlyCats Inc.</p>
+                        <p className="text-[11px] font-bold text-gray-300">© 2024 OnlyCats Inc.</p>
                     </div>
-
                 </aside>
 
             </div>
         </div>
 
-        {/* --- ACCESS DENIED MODAL --- */}
+        {/* --- MODALS --- */}
         {showAuthModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl relative">
-                    <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+                    <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 transition-colors">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                     <div className="flex flex-col items-center text-center mt-2">
-                        <div className="w-20 h-20 bg-[#fdf4ff] rounded-full flex items-center justify-center mb-4">
-                            <span className="text-4xl">🥺</span>
+                        <div className="w-20 h-20 bg-[#d946ef] rounded-[20px] flex items-center justify-center mb-5 text-white shadow-sm">
+                            <PawIcon className="w-10 h-10" />
                         </div>
-                        <h3 className="text-2xl font-black text-gray-900 mb-2">Oops, paws off!</h3>
-                        <p className="text-gray-500 mb-8 text-sm leading-relaxed">
-                            To pet cats, leave comments, and give paws, you need to join our fluffy family 🐾
+                        <h3 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Oops, paws off!</h3>
+                        <p className="text-gray-500 mb-8 text-[15px] font-medium leading-relaxed">
+                            To pet cats, leave comments, and give stars, you need to join our fluffy family 🐾
                         </p>
                         <div className="flex w-full gap-3">
-                            <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('register'); }} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-800 font-bold py-3.5 rounded-xl text-sm transition-colors">Sign Up</button>
-                            <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('login'); }} className="flex-1 bg-[#d946ef] hover:bg-[#c026d3] text-white font-bold py-3.5 rounded-xl text-sm shadow-sm transition-colors">Log In</button>
+                            <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('register'); }} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3.5 rounded-xl text-[15px] transition-colors">Sign Up</button>
+                            <button onClick={() => { setShowAuthModal(false); setActiveTab('auth'); setAuthMode('login'); }} className="flex-1 bg-[#d946ef] hover:bg-[#c026d3] text-white font-bold py-3.5 rounded-xl text-[15px] shadow-sm transition-colors">Log In</button>
                         </div>
                     </div>
                 </div>
             </div>
         )}
 
-        {/* --- WELCOME MODAL --- */}
-        {showWelcomeModal && (
-            <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-[32px] p-10 max-w-md w-full text-center shadow-xl">
-                    <div className="w-16 h-16 bg-[#fdf4ff] text-[#d946ef] rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/></svg>
+        {/* 🚨 МОДАЛКА ЛІМІТУ ЛАЙКІВ (ЗІРОЧОК) */}
+        {outOfLikesModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl relative text-center animate-in zoom-in-95 duration-200 border-4 border-yellow-400">
+                    <span className="text-6xl block mb-4 drop-shadow-md">🙀</span>
+                    <h3 className="text-2xl font-black text-gray-900 mb-2">Out of Stars!</h3>
+                    <p className="text-gray-500 mb-6 text-[15px] font-medium leading-relaxed">
+                        You've used all your free stars for today. Come back tomorrow or earn bonus stars by doing daily tasks! ⭐
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <button onClick={() => { setOutOfLikesModal(false); setActiveTab('tasks'); }} className="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-black py-4 rounded-xl text-[15px] shadow-sm transition-transform active:scale-95">Go to Tasks</button>
+                        <button onClick={() => setOutOfLikesModal(false)} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 rounded-xl text-sm transition-colors">Maybe later</button>
                     </div>
-                    <h2 className="text-2xl font-black mb-2">{welcomeTitle}</h2>
-                    <p className="text-gray-500 mb-8 text-sm">{welcomeDesc}</p>
-                    <button onClick={() => { setShowWelcomeModal(false); setActiveTab('home'); }} className="w-full bg-[#d946ef] text-white font-bold py-4 rounded-2xl shadow-sm">Let's go to the cats 🐾</button>
                 </div>
             </div>
         )}
 
-        {/* --- MOBILE BOTTOM NAVIGATION --- */}
-        <div className="md:hidden fixed bottom-0 w-full bg-white border-t border-gray-100 flex justify-around items-center p-2 z-50 pb-safe">
-            <button onClick={() => setActiveTab('home')} className={`p-3 rounded-2xl transition-colors ${activeTab === 'home' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
-            </button>
-            <button onClick={() => setActiveTab('explore')} className={`p-3 rounded-2xl transition-colors ${activeTab === 'explore' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            </button>
-            <button onClick={() => { if(!isLoggedIn) return setShowAuthModal(true); setActiveTab('addCat'); }} className="bg-[#d946ef] text-white p-3.5 rounded-full shadow-[0_4px_14px_rgba(217,70,239,0.4)] -mt-8 border-4 border-[#fafafa] transition-transform active:scale-95">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg>
-            </button>
-            <button onClick={() => setActiveTab('rating')} className={`p-3 rounded-2xl transition-colors ${activeTab === 'rating' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-            </button>
-            <button onClick={() => setActiveTab(isLoggedIn ? 'profile' : 'auth')} className={`p-3 rounded-2xl transition-colors ${activeTab === 'profile' || activeTab === 'auth' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-            </button>
+        {showWelcomeModal && (
+            <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-[32px] p-10 max-w-md w-full text-center shadow-xl animate-in zoom-in-95 duration-200">
+                    <div className="w-20 h-20 bg-[#d946ef] rounded-[20px] text-white mx-auto mb-5 flex items-center justify-center shadow-sm">
+                        <PawIcon className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-3xl font-black mb-3 tracking-tight text-gray-900">{welcomeTitle}</h2>
+                    <p className="text-gray-500 mb-8 text-[15px] font-medium leading-relaxed">{welcomeDesc}</p>
+                    <button onClick={() => { setShowWelcomeModal(false); setActiveTab('home'); }} className="w-full bg-[#d946ef] text-white font-black py-4 rounded-[18px] shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all text-lg tracking-wide">Let's go to the cats 🐾</button>
+                </div>
+            </div>
+        )}
+
+        {/* 📱 ПЛАВАЮЧА iOS-LIKE ПАНЕЛЬ НАВІГАЦІЇ ДЛЯ МОБАЙЛУ */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-6 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/90 to-transparent pointer-events-none">
+            <div className="bg-white/90 backdrop-blur-xl border border-gray-100 shadow-[0_10px_40px_rgba(0,0,0,0.08)] rounded-[24px] flex justify-around items-center p-2 pointer-events-auto">
+
+                {/* HOME */}
+                <button onClick={() => setActiveTab('home')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'home' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
+                    <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </button>
+
+                {/* 🚨 TASKS (ЗАМІСТЬ КАРТИ) */}
+                <button onClick={() => setActiveTab('tasks')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'tasks' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
+                    <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                </button>
+
+                {/* ADD POST */}
+                <button onClick={() => { if(!isLoggedIn) return setShowAuthModal(true); setActiveTab('addCat'); }} className="bg-[#d946ef] text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(217,70,239,0.4)] transform -translate-y-4 border-[4px] border-white transition-transform active:scale-95 relative z-10">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" d="M12 4v16m8-8H4"></path></svg>
+                </button>
+
+                {/* RATING */}
+                <button onClick={() => setActiveTab('rating')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'rating' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
+                    <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                </button>
+
+                {/* PROFILE */}
+                <button onClick={() => {
+                    if (isLoggedIn) {
+                        setTargetProfileId(null);
+                        setActiveTab('profile');
+                    } else {
+                        setActiveTab('auth');
+                    }
+                }} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'profile' || activeTab === 'auth' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
+                    <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                </button>
+            </div>
         </div>
 
     </div>
