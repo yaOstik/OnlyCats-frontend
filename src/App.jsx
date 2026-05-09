@@ -418,7 +418,7 @@ export default function App() {
       }
   }
 
-  // 🐾 СУЦІЛЬНА КЛАСИЧНА ЛАПКА ЯК НА СКРІНШОТІ
+  // 🐾 СУЦІЛЬНА КЛАСИЧНА ЛАПКА
   const PawIcon = ({ className }) => (
     <svg viewBox="0 0 512 512" fill="currentColor" className={className || "w-6 h-6"}>
         <path d="M226.5 92.9c14.3 7.3 28.9 23 39.5 44.9 10.6-21.9 25.2-37.6 39.5-44.9 16.8-8.6 36.1-9.5 50.8-3.4 18.2 7.5 28.8 25.4 30.7 44.9 1.7 17.5-6.8 35.1-20.7 48.7-18.7 18.3-48 29.8-80.3 35.4-32.3-5.6-61.6-17.1-80.3-35.4-13.9-13.6-22.4-31.2-20.7-48.7 1.9-19.5 12.5-37.4 30.7-44.9 14.7-6.1 34-.5 50.8 3.4zM96.7 167.3c15-6.2 34.3-.5 51.1 8 14.3 7.3 28.9 23 39.5 44.9-20.6 8.3-39 21.6-53.1 39-16.1-23.7-39.6-43.2-64.8-55-13.9-6.5-22.4-24.1-20.7-41.6 1.9-19.5 12.5-37.4 30.7-44.9 5.8-2.4 11.9-3 17.3-2.9v-7.5zm318.6 0c15-6.2 34.3-.5 51.1 8 18.2 7.5 28.8 25.4 30.7 44.9 1.7 17.5-6.8 35.1-20.7 48.7-18.7 18.3-48 29.8-80.3 35.4-14.1-17.4-32.5-30.7-53.1-39 10.6-21.9 25.2-37.6 39.5-44.9 16.8-8.6 36.1-9.5 50.8-3.4-6.1-2.4-12.2-3-18-2.9v-7.5zM256 304.5c42.4 0 83.2 16.4 115.1 46.5 26.2 24.7 43.1 57.3 48.3 93.3 2.1 14.3-10.4 25.7-24.9 25.7H117.5c-14.5 0-27-11.4-24.9-25.7 5.2-36 22.1-68.6 48.3-93.3 31.9-30.1 72.7-46.5 115.1-46.5z"/>
@@ -439,8 +439,6 @@ export default function App() {
 
         {/* 1. LEFT SIDEBAR */}
         <div className="w-[260px] bg-white flex flex-col hidden md:flex shrink-0 z-10 border-r border-gray-100 shadow-[2px_0_15px_rgba(0,0,0,0.02)]">
-
-            {/* 🚨 ТУТ ТОЧНО ТАКЕ ЛОГО ЯК НА СКРІНШОТІ */}
             <div className="p-6 pt-8 pb-8 flex items-center gap-3">
                 <div className="w-[42px] h-[42px] bg-[#d946ef] rounded-[12px] flex items-center justify-center text-white shadow-sm shrink-0">
                    <PawIcon className="w-[22px] h-[22px]" />
@@ -524,7 +522,6 @@ export default function App() {
             {/* 📱 МОБАЙЛ-ХІДЕР */}
             <div className="md:hidden sticky top-0 z-40 bg-white/80 backdrop-blur-xl px-5 py-3 shadow-[0_2px_15px_rgba(0,0,0,0.03)] flex items-center justify-between">
 
-                {/* 🚨 ТУТ ТОЧНО ТАКЕ ЛОГО ЯК НА СКРІНШОТІ */}
                 <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 bg-[#d946ef] rounded-[8px] flex items-center justify-center text-white shadow-sm shrink-0">
                         <PawIcon className="w-4 h-4" />
@@ -532,7 +529,19 @@ export default function App() {
                     <h1 className="text-[20px] font-black text-[#0f172a] tracking-tight mt-0.5">OnlyCats</h1>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                    {/* 🚨 КНОПКА ЛОГАУТУ ДЛЯ МОБАЙЛУ (Показується ТІЛЬКИ на своєму профілі) */}
+                    {isLoggedIn && activeTab === 'profile' && !targetProfileId && (
+                        <button
+                            onClick={() => {
+                                if(window.confirm('Meow, are you sure you want to log out?')) handleLogout();
+                            }}
+                            className="p-2 rounded-full text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        </button>
+                    )}
+
                     <button
                         onClick={() => setActiveTab('explore')}
                         className={`p-2 rounded-full transition-colors ${activeTab === 'explore' ? 'text-[#d946ef] bg-fuchsia-50' : 'text-gray-400 hover:bg-gray-50'}`}
@@ -540,7 +549,7 @@ export default function App() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </button>
                     {!isLoggedIn && (
-                        <button onClick={() => setShowAuthModal(true)} className="text-[13px] font-bold text-[#d946ef] bg-[#fdf4ff] px-4 py-2 rounded-xl">Log In</button>
+                        <button onClick={() => setShowAuthModal(true)} className="text-[13px] font-bold text-[#d946ef] bg-[#fdf4ff] px-4 py-2 rounded-xl ml-1">Log In</button>
                     )}
                 </div>
             </div>
@@ -851,35 +860,32 @@ export default function App() {
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-6 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/90 to-transparent pointer-events-none">
             <div className="bg-white/90 backdrop-blur-xl border border-gray-100 shadow-[0_10px_40px_rgba(0,0,0,0.08)] rounded-[24px] flex justify-around items-center p-2 pointer-events-auto">
 
-                {/* HOME */}
                 <button onClick={() => setActiveTab('home')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'home' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
                     <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 </button>
 
-                {/* 🚨 TASKS (ЗАМІСТЬ КАРТИ) */}
+                {/* 🚨 ТАСКИ ПОВЕРНУЛИСЯ ВНИЗ */}
                 <button onClick={() => setActiveTab('tasks')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'tasks' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
                     <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
                 </button>
 
-                {/* ADD POST */}
-                <button onClick={() => { if(!isLoggedIn) return setShowAuthModal(true); setActiveTab('addCat'); }} className="bg-[#d946ef] text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(217,70,239,0.4)] transform -translate-y-4 border-[4px] border-white transition-transform active:scale-95 relative z-10">
+                <button onClick={() => { if(!isLoggedIn) return setShowAuthModal(true); setActiveTab('addCat'); }} className="bg-gradient-to-tr from-[#d946ef] to-[#c026d3] text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(217,70,239,0.4)] transform -translate-y-4 border-[4px] border-white transition-transform active:scale-95 relative z-10">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" d="M12 4v16m8-8H4"></path></svg>
                 </button>
 
-                {/* RATING */}
                 <button onClick={() => setActiveTab('rating')} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'rating' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
                     <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                 </button>
 
-                {/* PROFILE */}
+                {/* 🚨 ПРИ КЛІКУ НА ПРОФІЛЬ ЯКЩО НЕ ЗАЛОГІНЕНИЙ - ВІДКРИВАЄТЬСЯ ГАРНА МОДАЛКА */}
                 <button onClick={() => {
                     if (isLoggedIn) {
                         setTargetProfileId(null);
                         setActiveTab('profile');
                     } else {
-                        setActiveTab('auth');
+                        setShowAuthModal(true);
                     }
-                }} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'profile' || activeTab === 'auth' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
+                }} className={`p-3 rounded-[18px] transition-colors ${activeTab === 'profile' ? 'text-[#d946ef] bg-[#fdf4ff]' : 'text-gray-400'}`}>
                     <svg className="w-[26px] h-[26px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                 </button>
             </div>
