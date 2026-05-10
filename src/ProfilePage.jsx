@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 export default function ProfilePage({ BASE_URL, targetUserId }) {
   const [profile, setProfile] = useState(null);
@@ -14,22 +14,18 @@ export default function ProfilePage({ BASE_URL, targetUserId }) {
 
   const [followListType, setFollowListType] = useState(null);
 
-  useEffect(() => {
-    fetchProfile();
-  }, [BASE_URL, targetUserId]);
-
-  const getMyUserId = () => {
+  const getMyUserId = useCallback(() => {
     try {
         const token = localStorage.getItem('token')?.replace(/"/g, '');
         if (!token) return null;
         const payload = JSON.parse(atob(token.split('.')[1]));
         return String(payload.sub || payload.id || payload.user_id);
-    } catch (e) {
+    } catch {
         return null;
     }
-  };
+  }, []);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
@@ -62,7 +58,11 @@ export default function ProfilePage({ BASE_URL, targetUserId }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [BASE_URL, getMyUserId, targetUserId]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const handleFollowToggle = async () => {
     try {
