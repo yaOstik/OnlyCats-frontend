@@ -1,60 +1,132 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ImageCropModal from './app/components/ImageCropModal';
+import ProfileSettingsModal from './app/components/ProfileSettingsModal';
 
-export default function ProfilePage({ BASE_URL, targetUserId }) {
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function getImageSize(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to read image size.'));
+    };
+    img.src = objectUrl;
+  });
+}
+
+function buildCoverStorageKey(userId) {
+  return `onlycats.cover.${userId}`;
+}
+
+export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChangeThemeMode, isDarkTheme }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ username: '', bio: '' });
   const [isSaving, setIsSaving] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  const fileInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
+  const coverInputRef = useRef(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
+  const [showAvatarCropModal, setShowAvatarCropModal] = useState(false);
 
+  const [coverUrl, setCoverUrl] = useState('');
   const [followListType, setFollowListType] = useState(null);
 
   const getMyUserId = useCallback(() => {
     try {
-        const token = localStorage.getItem('token')?.replace(/"/g, '');
-        if (!token) return null;
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return String(payload.sub || payload.id || payload.user_id);
+      const token = localStorage.getItem('token')?.replace(/"/g, '');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return String(payload.sub || payload.id || payload.user_id);
     } catch {
-        return null;
+      return null;
     }
   }, []);
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
-      if (!token) throw new Error("Please log in to view profiles.");
+      if (!token) throw new Error('Please log in to open profile.');
 
       const myId = getMyUserId();
       const isMe = !targetUserId || String(targetUserId) === String(myId);
       const endpoint = isMe ? `${BASE_URL}/profiles/me` : `${BASE_URL}/profiles/${targetUserId}`;
 
       const response = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (!response.ok) throw new Error('Failed to load profile');
+      if (!response.ok) throw new Error('Failed to load profile.');
 
       const data = await response.json();
+      const normalizedProfile = { ...data };
 
-      // 🚨 ФІКС КЕШУ: Додаємо таймстемп, щоб завжди бачити свіжу аватарку при заході в профіль
-      if (data.avatar_url) {
-          const cleanUrl = data.avatar_url.split('?')[0];
-          data.avatar_url = `${cleanUrl}?t=${Date.now()}`;
+      if (normalizedProfile.avatar_url) {
+        const cleanUrl = normalizedProfile.avatar_url.split('?')[0];
+        normalizedProfile.avatar_url = `${cleanUrl}?t=${Date.now()}`;
       }
 
-      setProfile(data);
-      if (data.can_edit) {
-          setEditForm({ username: data.username || '', bio: data.bio || '' });
+      const followedByMe =
+        typeof normalizedProfile.is_followed_by_me === 'boolean'
+          ? normalizedProfile.is_followed_by_me
+          : typeof normalizedProfile.is_following === 'boolean'
+            ? normalizedProfile.is_following
+            : typeof normalizedProfile.following === 'boolean'
+              ? normalizedProfile.following
+              : typeof normalizedProfile.followed_by_me === 'boolean'
+                ? normalizedProfile.followed_by_me
+                : Array.isArray(normalizedProfile.followers) && myId
+                  ? normalizedProfile.followers.some((item) => {
+                      const followerId =
+                        item?.user_id ?? item?.id ?? item?.follower_id ?? item;
+                      return String(followerId) === String(myId);
+                    })
+                  : false;
+
+      const followersCount = Number(
+        normalizedProfile.followers_count ??
+          normalizedProfile.followersCount ??
+          (Array.isArray(normalizedProfile.followers) ? normalizedProfile.followers.length : 0),
+      );
+
+      const followingCount = Number(
+        normalizedProfile.following_count ??
+          normalizedProfile.followingCount ??
+          (Array.isArray(normalizedProfile.following) ? normalizedProfile.following.length : 0),
+      );
+
+      normalizedProfile.is_followed_by_me = followedByMe;
+      normalizedProfile.followers_count = Number.isNaN(followersCount) ? 0 : followersCount;
+      normalizedProfile.following_count = Number.isNaN(followingCount) ? 0 : followingCount;
+
+      setProfile(normalizedProfile);
+      if (normalizedProfile.can_edit) {
+        setEditForm({ username: normalizedProfile.username || '', bio: normalizedProfile.bio || '' });
       }
-    } catch (err) {
-      setError(err.message);
+
+      const localCover = localStorage.getItem(buildCoverStorageKey(normalizedProfile.user_id));
+      setCoverUrl(localCover || normalizedProfile.cover_url || '');
+    } catch (requestError) {
+      setError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -69,141 +141,216 @@ export default function ProfilePage({ BASE_URL, targetUserId }) {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
       const method = profile.is_followed_by_me ? 'DELETE' : 'POST';
 
-      setProfile(prev => ({
-          ...prev,
-          is_followed_by_me: !prev.is_followed_by_me,
-          followers_count: prev.is_followed_by_me ? prev.followers_count - 1 : prev.followers_count + 1
+      setProfile((prev) => ({
+        ...prev,
+        is_followed_by_me: !prev.is_followed_by_me,
+        followers_count: prev.is_followed_by_me
+          ? Math.max(0, (Number(prev.followers_count) || 0) - 1)
+          : (Number(prev.followers_count) || 0) + 1,
       }));
 
       const response = await fetch(`${BASE_URL}/profiles/${profile.user_id}/follow`, {
-          method: method,
-          headers: { 'Authorization': `Bearer ${token}` }
+        method,
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (!response.ok) throw new Error("Failed to follow/unfollow");
+      if (!response.ok) throw new Error('Failed to follow/unfollow.');
 
       const data = await response.json();
-      setProfile(prev => ({
-          ...prev,
-          is_followed_by_me: data.following,
-          followers_count: data.followers_count,
-          following_count: data.following_count
+      setProfile((prev) => ({
+        ...prev,
+        is_followed_by_me:
+          typeof data.following === 'boolean'
+            ? data.following
+            : typeof data.is_followed_by_me === 'boolean'
+              ? data.is_followed_by_me
+              : prev.is_followed_by_me,
+        followers_count: Number.isNaN(Number(data.followers_count ?? data.followersCount))
+          ? Number(prev.followers_count) || 0
+          : Number(data.followers_count ?? data.followersCount),
+        following_count: Number.isNaN(Number(data.following_count ?? data.followingCount))
+          ? Number(prev.following_count) || 0
+          : Number(data.following_count ?? data.followingCount),
       }));
-
-    } catch (error) {
-      alert("Error: " + error.message);
+    } catch (followError) {
+      alert(followError.message);
       fetchProfile();
     }
   };
 
-  const handleSaveProfile = async (e) => {
-    e.preventDefault();
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
       const response = await fetch(`${BASE_URL}/profiles/me`, {
         method: 'PATCH',
         headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(editForm),
       });
 
       if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.detail || "Failed to update profile");
+        const errorBody = await response.json();
+        throw new Error(errorBody.detail || 'Failed to update profile.');
       }
 
       const updatedProfile = await response.json();
-
-      // Переносимо нашу свіжу аватарку, щоб вона не блимала
       updatedProfile.avatar_url = profile.avatar_url;
-
+      updatedProfile.cover_url = profile.cover_url;
       setProfile(updatedProfile);
       localStorage.setItem('username', updatedProfile.username);
-      setIsEditing(false);
-    } catch (error) {
-      alert(error.message);
+      setShowSettingsModal(false);
+    } catch (saveError) {
+      alert(saveError.message);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleAvatarChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const uploadAvatar = async (file) => {
     setIsUploadingAvatar(true);
+    try {
+      const { width, height } = await getImageSize(file);
+      const cropSize = Math.min(width, height);
+
+      const formData = new FormData();
+      formData.append('avatar', file);
+      formData.append('crop_x', '0');
+      formData.append('crop_y', '0');
+      formData.append('crop_size', String(cropSize));
+
+      const token = localStorage.getItem('token')?.replace(/"/g, '');
+      const response = await fetch(`${BASE_URL}/profiles/me/avatar`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json();
+        throw new Error(errorBody.detail || 'Failed to update avatar.');
+      }
+
+      const updatedProfile = await response.json();
+      if (updatedProfile.avatar_url) {
+        const cleanUrl = updatedProfile.avatar_url.split('?')[0];
+        updatedProfile.avatar_url = `${cleanUrl}?t=${Date.now()}`;
+      }
+      setProfile((prev) => ({ ...prev, ...updatedProfile }));
+    } catch (avatarError) {
+      alert(avatarError.message);
+    } finally {
+      setIsUploadingAvatar(false);
+      setShowAvatarCropModal(false);
+      setPendingAvatarFile(null);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleAvatarSelected = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPendingAvatarFile(file);
+    setShowAvatarCropModal(true);
+  };
+
+  const handleCoverSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !profile?.can_edit) return;
 
     try {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
+      const dataUrl = await readFileAsDataUrl(file);
+      setCoverUrl(dataUrl);
+      localStorage.setItem(buildCoverStorageKey(profile.user_id), dataUrl);
 
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = objectUrl;
+      const token = localStorage.getItem('token')?.replace(/"/g, '');
+      const formData = new FormData();
+      formData.append('background', file);
+
+      const endpoints = ['/profiles/me/background', '/profiles/me/cover'];
+      for (const endpoint of endpoints) {
+        const response = await fetch(`${BASE_URL}${endpoint}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
         });
-
-        const width = img.width;
-        const height = img.height;
-        const cropSize = Math.min(width, height);
-        const cropX = Math.floor((width - cropSize) / 2);
-        const cropY = Math.floor((height - cropSize) / 2);
-
-        URL.revokeObjectURL(objectUrl);
-
-        const formData = new FormData();
-        formData.append('avatar', file);
-        formData.append('crop_x', cropX);
-        formData.append('crop_y', cropY);
-        formData.append('crop_size', cropSize);
-
-        const token = localStorage.getItem('token')?.replace(/"/g, '');
-        const response = await fetch(`${BASE_URL}/profiles/me/avatar`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
-        });
-
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.detail || "Failed to upload avatar");
-        }
-
-        const updatedProfile = await response.json();
-
-        // 🚨 ФІКС КЕШУ: Оновлюємо картинку миттєво після зміни
-        if (updatedProfile.avatar_url) {
-            const cleanUrl = updatedProfile.avatar_url.split('?')[0];
-            updatedProfile.avatar_url = `${cleanUrl}?t=${Date.now()}`;
-        }
-
-        setProfile(updatedProfile);
-    } catch (error) {
-        alert(error.message);
+        if (response.ok) break;
+        if (response.status !== 404) break;
+      }
+    } catch (coverError) {
+      alert(coverError.message || 'Failed to update profile background.');
     } finally {
-        setIsUploadingAvatar(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+      if (coverInputRef.current) coverInputRef.current.value = '';
     }
+  };
+
+  const handleDeleteAccount = async (password) => {
+    const token = localStorage.getItem('token')?.replace(/"/g, '');
+    const endpoints = [
+      { url: `${BASE_URL}/users/me`, method: 'DELETE' },
+      { url: `${BASE_URL}/users/me/`, method: 'DELETE' },
+    ];
+
+    let deleted = false;
+    let lastMessage = 'Failed to delete account.';
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint.url, {
+          method: endpoint.method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ password }),
+        });
+
+        if (response.ok) {
+          deleted = true;
+          break;
+        }
+
+        if (response.status === 404) {
+          continue;
+        }
+
+        let detail = '';
+        try {
+          const errorBody = await response.json();
+          detail = errorBody?.detail || errorBody?.message || '';
+        } catch {
+          detail = '';
+        }
+        lastMessage = detail || `Failed with status ${response.status}.`;
+      } catch {
+        lastMessage = 'Network error. Try again.';
+      }
+    }
+
+    if (!deleted) {
+      throw new Error(lastMessage);
+    }
+
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('remembered_email');
+    if (profile?.user_id) {
+      localStorage.removeItem(buildCoverStorageKey(profile.user_id));
+    }
+    alert('Account deleted permanently.');
+    window.location.reload();
   };
 
   if (loading) {
     return (
       <div className="w-full animate-pulse flex flex-col mt-4">
         <div className="relative w-full mb-20">
-            <div className="h-48 w-full bg-gray-200 rounded-[32px]"></div>
-            <div className="absolute -bottom-10 left-8 w-[120px] h-[120px] bg-white rounded-full p-[5px]">
-                <div className="w-full h-full bg-gray-300 rounded-full"></div>
-            </div>
-        </div>
-        <div className="px-8 space-y-4">
-            <div className="h-8 w-48 bg-gray-200 rounded-lg"></div>
-            <div className="h-4 w-64 bg-gray-200 rounded-lg"></div>
-            <div className="flex gap-4 pt-4">
-                <div className="h-16 w-24 bg-gray-200 rounded-2xl"></div>
-                <div className="h-16 w-24 bg-gray-200 rounded-2xl"></div>
-            </div>
+          <div className="h-48 w-full bg-gray-200 rounded-[32px]" />
+          <div className="absolute -bottom-10 left-8 w-[120px] h-[120px] bg-white rounded-full p-[5px]">
+            <div className="w-full h-full bg-gray-300 rounded-full" />
+          </div>
         </div>
       </div>
     );
@@ -212,7 +359,6 @@ export default function ProfilePage({ BASE_URL, targetUserId }) {
   if (error) {
     return (
       <div className="text-center py-16 bg-white rounded-[32px] border border-red-50 shadow-sm mt-4">
-        <span className="text-6xl mb-4 block animate-bounce">😿</span>
         <h3 className="text-red-500 font-black text-xl">Oops! User not found.</h3>
         <p className="text-gray-400 text-sm mt-2 font-medium">{error}</p>
       </div>
@@ -223,220 +369,239 @@ export default function ProfilePage({ BASE_URL, targetUserId }) {
 
   return (
     <div className="w-full pb-12 flex flex-col">
-
-      {/* 1. БЕЗПЕЧНИЙ КОНТЕЙНЕР ДЛЯ ОБКЛАДИНКИ І АВАТАРУ */}
       <div className="relative w-full mb-16 mt-2 shrink-0">
+        <div
+          className="w-full h-48 rounded-[32px] overflow-hidden relative shadow-[0_2px_15px_rgba(217,70,239,0.08)] border border-fuchsia-100"
+          style={
+            coverUrl
+              ? {
+                  backgroundImage: `url(${coverUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }
+              : undefined
+          }
+        >
+          {!coverUrl && (
+            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-100 via-purple-100 to-pink-100" />
+          )}
 
-        {/* Фонова обкладинка */}
-        <div className="w-full h-48 bg-gradient-to-br from-fuchsia-100 via-purple-100 to-pink-100 rounded-[32px] overflow-hidden relative shadow-[0_2px_15px_rgba(217,70,239,0.05)]">
-            <div className="absolute top-4 right-10 text-6xl opacity-20 blur-[2px] transform rotate-12 pointer-events-none">🧶</div>
-            <div className="absolute -bottom-8 left-1/3 text-8xl opacity-10 transform -rotate-12 pointer-events-none">🐾</div>
+          {profile.can_edit && (
+            <button
+              type="button"
+              onClick={() => coverInputRef.current?.click()}
+              className="absolute right-4 top-4 rounded-xl border border-white/80 bg-white/90 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#d946ef] shadow-sm hover:bg-white"
+            >
+              Change Background
+            </button>
+          )}
         </div>
+        <input
+          ref={coverInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleCoverSelected}
+        />
 
-        {/* Аватарка */}
         <div className="absolute -bottom-10 left-6 sm:left-10 z-10">
-            <div className="relative group/avatar cursor-pointer" onClick={() => profile.can_edit && fileInputRef.current?.click()}>
-                <div className="w-[110px] h-[110px] sm:w-[130px] sm:h-[130px] rounded-full bg-white p-[5px] shadow-lg transition-transform duration-300 group-hover/avatar:scale-105">
-                    {isUploadingAvatar ? (
-                        <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center">
-                            <svg className="w-8 h-8 text-[#d946ef] animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        </div>
-                    ) : profile.avatar_url ? (
-                        <img src={profile.avatar_url} alt={profile.username} className="w-full h-full rounded-full object-cover bg-gray-50" />
-                    ) : (
-                        <div className="w-full h-full rounded-full bg-gradient-to-tr from-fuchsia-100 to-purple-50 text-[#d946ef] flex items-center justify-center font-black text-4xl sm:text-5xl">
-                            {profile.username.charAt(0).toUpperCase()}
-                        </div>
-                    )}
+          <div
+            className="relative group/avatar cursor-pointer"
+            onClick={() => profile.can_edit && avatarInputRef.current?.click()}
+          >
+            <div className="w-[110px] h-[110px] sm:w-[130px] sm:h-[130px] rounded-full bg-white p-[5px] shadow-lg transition-transform duration-300 group-hover/avatar:scale-105">
+              {isUploadingAvatar ? (
+                <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-[#d946ef] animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4zm2 5.29A7.96 7.96 0 014 12H0c0 3.04 1.14 5.82 3 7.94l3-2.65z"
+                    />
+                  </svg>
                 </div>
-
-                {/* Іконка камери для зміни фото */}
-                {profile.can_edit && !isUploadingAvatar && (
-                    <div className="absolute bottom-1 right-1 w-10 h-10 bg-gray-900 text-white rounded-full flex items-center justify-center border-[3px] border-white shadow-md opacity-0 group-hover/avatar:opacity-100 transition-opacity">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    </div>
-                )}
+              ) : profile.avatar_url ? (
+                <img src={profile.avatar_url} alt={profile.username} className="w-full h-full rounded-full object-cover bg-gray-50" />
+              ) : (
+                <div className="w-full h-full rounded-full bg-gradient-to-tr from-fuchsia-100 to-purple-50 text-[#d946ef] flex items-center justify-center font-black text-4xl sm:text-5xl">
+                  {profile.username.charAt(0).toUpperCase()}
+                </div>
+              )}
             </div>
-            <input type="file" accept="image/jpeg, image/png, image/webp" className="hidden" ref={fileInputRef} onChange={handleAvatarChange} />
+
+            {profile.can_edit && !isUploadingAvatar && (
+              <div className="absolute bottom-1 right-1 w-10 h-10 bg-gray-900 text-white rounded-full flex items-center justify-center border-[3px] border-white shadow-md opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.89l.82-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.66.89l.82 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+            )}
+          </div>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            ref={avatarInputRef}
+            onChange={handleAvatarSelected}
+          />
         </div>
 
-        {/* Кнопки Дій */}
         <div className="absolute -bottom-4 right-4 sm:right-6 z-10">
-            {profile.can_edit ? (
-                <button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-gray-900 hover:bg-gray-800 text-white font-bold text-[13px] px-5 py-2.5 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                    Edit Profile
-                </button>
-            ) : (
-                <button
-                    onClick={handleFollowToggle}
-                    className={`font-bold text-[14px] px-6 py-2.5 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2 ${
-                        profile.is_followed_by_me
-                        ? 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-200'
-                        : 'bg-[#d946ef] hover:bg-[#c026d3] text-white border border-[#c026d3]'
-                    }`}
-                >
-                    {profile.is_followed_by_me ? (
-                        <>Following <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg></>
-                    ) : (
-                        <>Follow <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg></>
-                    )}
-                </button>
-            )}
+          {profile.can_edit ? (
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="bg-gray-900 hover:bg-gray-800 text-white font-bold text-[13px] px-5 py-2.5 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M10.33 3.26l1.34-1.34a1 1 0 011.42 0l1.34 1.34a1 1 0 00.7.29h1.89a1 1 0 011 1v1.89a1 1 0 00.29.7l1.34 1.34a1 1 0 010 1.42l-1.34 1.34a1 1 0 00-.29.7v1.89a1 1 0 01-1 1h-1.89a1 1 0 00-.7.29l-1.34 1.34a1 1 0 01-1.42 0l-1.34-1.34a1 1 0 00-.7-.29H8.44a1 1 0 01-1-1v-1.89a1 1 0 00-.29-.7L5.81 9.61a1 1 0 010-1.42l1.34-1.34a1 1 0 00.29-.7V4.26a1 1 0 011-1h1.89a1 1 0 00.7-.29z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z" />
+              </svg>
+              Settings
+            </button>
+          ) : (
+            <button
+              onClick={handleFollowToggle}
+              className={`font-bold text-[14px] px-6 py-2.5 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2 ${
+                profile.is_followed_by_me
+                  ? 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-200'
+                  : 'bg-[#d946ef] hover:bg-[#c026d3] text-white border border-[#c026d3]'
+              }`}
+            >
+              {profile.is_followed_by_me ? 'Following' : 'Follow'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 2. ІНФОРМАЦІЯ ПРОФІЛЮ */}
       <div className="px-6 sm:px-10 mb-10">
-        <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            {profile.username}
-        </h1>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{profile.username}</h1>
         <p className="text-gray-500 font-medium text-[15px] mt-3 max-w-md leading-relaxed whitespace-pre-wrap">
-            {profile.bio || "This kitty hasn't written a bio yet. Probably busy napping. 💤"}
+          {profile.bio || "This kitty hasn't written a bio yet."}
         </p>
 
-        {/* СТАТИСТИКА */}
         <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-8">
-            <div className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px]">
-                <span className="text-gray-900 font-black text-xl">{profile.posts_count}</span>
-                <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Posts</span>
-            </div>
+          <div className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px]">
+            <span className="text-gray-900 font-black text-xl">{profile.posts_count}</span>
+            <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Posts</span>
+          </div>
 
-            <button
-                onClick={() => setFollowListType('followers')}
-                className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px] hover:border-[#d946ef] hover:shadow-md transition-all active:scale-95"
-            >
-                <span className="text-gray-900 font-black text-xl">{profile.followers_count}</span>
-                <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Followers</span>
-            </button>
+          <button
+            onClick={() => setFollowListType('followers')}
+            className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px] hover:border-[#d946ef] hover:shadow-md transition-all active:scale-95"
+          >
+            <span className="text-gray-900 font-black text-xl">{profile.followers_count}</span>
+            <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Followers</span>
+          </button>
 
-            <button
-                onClick={() => setFollowListType('following')}
-                className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px] hover:border-[#d946ef] hover:shadow-md transition-all active:scale-95"
-            >
-                <span className="text-gray-900 font-black text-xl">{profile.following_count}</span>
-                <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Following</span>
-            </button>
+          <button
+            onClick={() => setFollowListType('following')}
+            className="bg-white px-5 py-3.5 rounded-[20px] shadow-sm border border-gray-100 flex flex-col items-center min-w-[100px] hover:border-[#d946ef] hover:shadow-md transition-all active:scale-95"
+          >
+            <span className="text-gray-900 font-black text-xl">{profile.following_count}</span>
+            <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mt-0.5">Following</span>
+          </button>
         </div>
       </div>
 
-      {/* 3. ГАЛЕРЕЯ */}
       <div className="px-2 sm:px-6 w-full">
         <div className="flex items-center gap-3 mb-6 px-4">
-            <h3 className="text-gray-900 font-black text-xl">Fluffy Gallery</h3>
-            <div className="h-px bg-gray-200 flex-1"></div>
+          <h3 className="text-gray-900 font-black text-xl">Fluffy Gallery</h3>
+          <div className="h-px bg-gray-200 flex-1" />
         </div>
 
         {profile.posts.length === 0 ? (
-            <div className="text-center py-16 bg-gray-50 rounded-[32px] mx-4 border border-dashed border-gray-200">
-                <span className="text-5xl block mb-4">📸</span>
-                <h4 className="text-gray-900 font-bold text-lg">No posts yet</h4>
-                <p className="text-gray-400 text-sm mt-1 font-medium">When photos are shared, they'll appear here.</p>
-            </div>
+          <div className="text-center py-16 bg-gray-50 rounded-[32px] mx-4 border border-dashed border-gray-200">
+            <h4 className="text-gray-900 font-bold text-lg">No posts yet</h4>
+            <p className="text-gray-400 text-sm mt-1 font-medium">When photos are shared, they will appear here.</p>
+          </div>
         ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 px-2">
-                {profile.posts.map(post => (
-                    <div key={post.id} className="relative aspect-square group overflow-hidden rounded-[24px] bg-gray-100 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-                        <img
-                            src={post.image_url || "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"}
-                            alt={post.title}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                        <div className="absolute inset-0 bg-gray-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                            <div className="flex items-center gap-2 text-white font-black text-xl drop-shadow-md">
-                                <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 7c-1.38 0-2.5-1.12-2.5-2.5S7.12 2 8.5 2 11 3.12 11 4.5 9.88 7 8.5 7zm7 0c-1.38 0-2.5-1.12-2.5-2.5S14.12 2 15.5 2 18 3.12 18 4.5 16.88 7 15.5 7zM5.5 12c-1.38 0-2.5-1.12-2.5-2.5S4.12 7 5.5 7 8 8.12 8 9.5 6.88 12 5.5 12zm13 0c-1.38 0-2.5-1.12-2.5-2.5s-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5 1.12 2.5 2.5 2.5zM12 22c-3.31 0-6-2.69-6-6 0-2.5 1.5-4.5 3.5-5.5.83-.41 1.67-.5 2.5-.5s1.67.09 2.5.5c2 1 3.5 3 3.5 5.5 0 3.31-2.69 6-6 6z"/></svg>
-                                {post.rating_score || post.likes_count || post.likes || 0}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 px-2">
+            {profile.posts.map((post) => (
+              <div key={post.id} className="relative aspect-square group overflow-hidden rounded-[24px] bg-gray-100 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                <img
+                  src={post.image_url || 'https://images.unsplash.com/photo-1533738363-b7f9aef128ce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'}
+                  alt={post.title}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-gray-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-white font-black text-xl drop-shadow-md">
+                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8.5 7C7.1 7 6 5.9 6 4.5S7.1 2 8.5 2 11 3.1 11 4.5 9.9 7 8.5 7zm7 0C14.1 7 13 5.9 13 4.5S14.1 2 15.5 2 18 3.1 18 4.5 16.9 7 15.5 7zM5.5 12C4.1 12 3 10.9 3 9.5S4.1 7 5.5 7 8 8.1 8 9.5 6.9 12 5.5 12zm13 0c-1.4 0-2.5-1.1-2.5-2.5S17.1 7 18.5 7 21 8.1 21 9.5 19.9 12 18.5 12zM12 22c-3.3 0-6-2.7-6-6 0-2.5 1.5-4.5 3.5-5.5.8-.4 1.7-.5 2.5-.5s1.7.1 2.5.5c2 1 3.5 3 3.5 5.5 0 3.3-2.7 6-6 6z" />
+                    </svg>
+                    {post.rating_score || post.likes_count || post.likes || 0}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* --- МОДАЛКИ --- */}
-      {isEditing && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                <button onClick={() => setIsEditing(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
+      <ProfileSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        basicForm={editForm}
+        onChangeBasic={(field, value) => setEditForm((current) => ({ ...current, [field]: value }))}
+        onSaveBasic={handleSaveProfile}
+        isSavingBasic={isSaving}
+        baseUrl={BASE_URL}
+        defaultEmail={profile.email || localStorage.getItem('remembered_email') || ''}
+        onDeleteAccount={handleDeleteAccount}
+        themeMode={themeMode}
+        onChangeThemeMode={onChangeThemeMode}
+        isDarkTheme={isDarkTheme}
+      />
 
-                <h3 className="text-2xl font-black text-gray-900 mb-6 flex items-center gap-2">
-                    <span>✨</span> Edit Profile
-                </h3>
+      <ImageCropModal
+        isOpen={showAvatarCropModal}
+        file={pendingAvatarFile}
+        title="Crop avatar"
+        shape="circle"
+        aspect={1}
+        onCancel={() => {
+          setShowAvatarCropModal(false);
+          setPendingAvatarFile(null);
+          if (avatarInputRef.current) avatarInputRef.current.value = '';
+        }}
+        onApply={(croppedFile) => {
+          uploadAvatar(croppedFile);
+        }}
+      />
 
-                <form onSubmit={handleSaveProfile} className="space-y-5">
-                    <div>
-                        <label className="block text-[13px] font-bold text-gray-500 uppercase tracking-wider mb-2">Username</label>
-                        <input
-                            type="text"
-                            required
-                            maxLength={50}
-                            value={editForm.username}
-                            onChange={(e) => setEditForm({...editForm, username: e.target.value})}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-bold text-gray-900 outline-none focus:border-[#d946ef] focus:ring-2 focus:ring-fuchsia-100 transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[13px] font-bold text-gray-500 uppercase tracking-wider mb-2">Bio</label>
-                        <textarea
-                            rows={3}
-                            maxLength={100}
-                            value={editForm.bio}
-                            onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
-                            placeholder="Tell everyone how much you love cats..."
-                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 font-medium text-gray-900 outline-none focus:border-[#d946ef] focus:ring-2 focus:ring-fuchsia-100 transition-all resize-none"
-                        />
-                        <div className="text-right text-xs font-bold text-gray-400 mt-1">
-                            {editForm.bio.length} / 100
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="w-full bg-[#d946ef] text-white font-bold text-lg py-4 rounded-2xl shadow-sm hover:bg-[#c026d3] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center"
-                    >
-                        {isSaving ? (
-                            <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        ) : 'Save Changes'}
-                    </button>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {/* Модалка для списків Followers/Following */}
       {followListType && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-[32px] p-10 max-w-sm w-full shadow-2xl relative text-center">
-                <button onClick={() => setFollowListType(null)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
+          <div className="bg-white rounded-[32px] p-10 max-w-sm w-full shadow-2xl relative text-center">
+            <button onClick={() => setFollowListType(null)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-800 transition-colors">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
 
-                <span className="text-5xl block mb-4">🛠️</span>
-                <h3 className="text-2xl font-black text-gray-900 mb-2 capitalize">{followListType} List</h3>
-                <p className="text-gray-500 font-medium text-[15px] leading-relaxed mb-6">
-                    This feature is under construction!
-                </p>
-                <div className="bg-orange-50 text-orange-800 p-4 rounded-2xl text-sm font-bold border border-orange-100">
-                    Tell your backend dev to add a <span className="font-mono bg-white px-1 rounded text-orange-600">GET /profiles/{profile.user_id}/{followListType}</span> endpoint so we can see the cats here! 🐾
-                </div>
-
-                <button
-                    onClick={() => setFollowListType(null)}
-                    className="w-full mt-6 bg-gray-100 text-gray-800 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition-colors"
-                >
-                    Got it!
-                </button>
-            </div>
+            <h3 className="text-2xl font-black text-gray-900 mb-2 capitalize">{followListType} list</h3>
+            <p className="text-gray-500 font-medium text-[15px] leading-relaxed mb-6">
+              This feature is under construction.
+            </p>
+            <button
+              onClick={() => setFollowListType(null)}
+              className="w-full mt-2 bg-gray-100 text-gray-800 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
-
     </div>
   );
 }

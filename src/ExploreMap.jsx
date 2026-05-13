@@ -74,7 +74,27 @@ export default function ExploreMap({ isLoggedIn, setShowAuthModal }) {
       const response = await fetch(`${BASE_URL}/reports/`);
       if (!response.ok) throw new Error('Не вдалося завантажити оголошення');
       const data = await response.json();
-      const reversedAds = data.sort((a, b) => b.id - a.id);
+      const now = Date.now();
+      const maxVisibleAgeMs = 30 * 24 * 60 * 60 * 1000;
+      const visibleAds = (Array.isArray(data) ? data : []).filter((ad) => {
+        const status = String(ad.status || ad.state || '').toLowerCase();
+        if (['found', 'resolved', 'closed', 'archived'].includes(status)) return false;
+
+        const expiresAt = ad.expires_at || ad.expiresAt;
+        if (expiresAt) {
+          const expiresTime = new Date(expiresAt).getTime();
+          if (!Number.isNaN(expiresTime) && expiresTime < now) return false;
+        }
+
+        const createdAt = ad.created_at || ad.createdAt;
+        if (createdAt) {
+          const createdTime = new Date(createdAt).getTime();
+          if (!Number.isNaN(createdTime) && now - createdTime > maxVisibleAgeMs) return false;
+        }
+        return true;
+      });
+
+      const reversedAds = visibleAds.sort((a, b) => b.id - a.id);
       setAdsList(reversedAds);
     } catch (error) {
       console.error('Помилка завантаження карти:', error);
@@ -190,7 +210,7 @@ export default function ExploreMap({ isLoggedIn, setShowAuthModal }) {
 
       {/* ПІДКАЗКА */}
       {showAdForm && !selectedPos && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-600 px-4 py-3 rounded-xl text-center font-bold animate-pulse mx-4 md:mx-0">
+          <div className="bg-fuchsia-50 border border-fuchsia-200 text-fuchsia-600 px-4 py-3 rounded-xl text-center font-bold animate-pulse mx-4 md:mx-0">
               👇 Клікни в будь-яке місце на карті, щоб поставити мітку
           </div>
       )}
@@ -198,7 +218,7 @@ export default function ExploreMap({ isLoggedIn, setShowAuthModal }) {
       {/* --- КАРТА --- */}
       <div
         ref={mapRef} // Реф для скролу до карти
-        className={`relative w-full h-[400px] md:h-[450px] rounded-[32px] border-4 overflow-hidden shadow-sm z-0 transition-colors ${showAdForm && !selectedPos ? 'border-blue-400' : 'border-white'}`}
+        className={`relative w-full h-[400px] md:h-[450px] rounded-[32px] border-4 overflow-hidden shadow-sm z-0 transition-colors ${showAdForm && !selectedPos ? 'border-fuchsia-400' : 'border-white'}`}
       >
         <MapContainer
             center={[49.8397, 24.0297]}

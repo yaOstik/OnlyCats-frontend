@@ -56,7 +56,7 @@ export default function TasksPage({ BASE_URL }) {
 
   // Визначаємо колір вогника
   const flameColors = {
-    orange: "text-orange-500 bg-orange-100",
+    orange: "text-fuchsia-500 bg-fuchsia-100",
     grey: "text-gray-400 bg-gray-100",
     off: "text-gray-300 bg-gray-50"
   };
@@ -85,9 +85,9 @@ export default function TasksPage({ BASE_URL }) {
 
         <div className="flex items-center gap-4 sm:w-[180px] shrink-0 justify-between sm:justify-end">
           {isBonus && !isDone && (
-            <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-              <span className="text-yellow-500 text-sm">⭐</span>
-              <span className="text-yellow-600 font-bold text-xs">+{reward}</span>
+            <div className="flex items-center gap-1 bg-fuchsia-50 px-2 py-1 rounded-lg">
+              <span className="text-fuchsia-500 text-sm">⭐</span>
+              <span className="text-fuchsia-600 font-bold text-xs">+{reward}</span>
             </div>
           )}
 
@@ -98,7 +98,7 @@ export default function TasksPage({ BASE_URL }) {
             </div>
             <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
               <div
-                className={`h-full transition-all duration-700 ease-out rounded-full ${isDone ? 'bg-[#d946ef]' : isBonus ? 'bg-yellow-400' : 'bg-gray-800'}`}
+                className={`h-full transition-all duration-700 ease-out rounded-full ${isDone ? 'bg-[#d946ef]' : isBonus ? 'bg-fuchsia-400' : 'bg-gray-800'}`}
                 style={{ width: `${percent}%` }}
               ></div>
             </div>
@@ -126,7 +126,7 @@ export default function TasksPage({ BASE_URL }) {
         </div>
 
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-yellow-50 text-yellow-500 flex items-center justify-center text-2xl">
+          <div className="w-12 h-12 rounded-full bg-fuchsia-50 text-fuchsia-500 flex items-center justify-center text-2xl">
             ⭐
           </div>
           <div>
@@ -164,12 +164,12 @@ export default function TasksPage({ BASE_URL }) {
       </div>
 
       {/* 3. BONUS TASKS */}
-      <div className="bg-gradient-to-br from-yellow-50 to-orange-50 p-6 rounded-[24px] shadow-sm border border-yellow-100">
+      <div className="oc-bonus-quests-panel bg-gradient-to-br from-fuchsia-50 to-purple-50 p-6 rounded-[24px] shadow-sm border border-fuchsia-100">
         <div className="flex justify-between items-center mb-5">
-          <h3 className="font-bold text-yellow-800 text-lg flex items-center gap-2">
+          <h3 className="oc-bonus-title font-bold text-fuchsia-800 text-lg flex items-center gap-2">
             <span className="text-xl">🎁</span> Bonus Quests
           </h3>
-          <span className="text-xs font-bold text-yellow-600 bg-white px-3 py-1 rounded-lg shadow-sm">
+          <span className="oc-earned-pill text-xs font-bold text-fuchsia-600 bg-white px-3 py-1 rounded-lg shadow-sm">
             Earned today: {data.bonus_stars_earned_today} ⭐
           </span>
         </div>
@@ -198,9 +198,6 @@ export default function TasksPage({ BASE_URL }) {
       <div className="flex flex-wrap gap-4 text-center justify-center px-4">
         <p className="text-xs text-gray-400 font-bold bg-white px-4 py-2 rounded-xl border border-gray-100 shadow-sm">
           Daily likes left: <span className="text-[#d946ef]">{data.remaining_daily_likes}</span>
-        </p>
-        <p className="text-xs text-gray-400 font-bold bg-white px-4 py-2 rounded-xl border border-gray-100 shadow-sm">
-          Total limits available: <span className="text-gray-900">{data.remaining_total_likes}</span>
         </p>
       </div>
 
