@@ -1001,7 +1001,7 @@ export default function App() {
                             <a href="#" className="hover:text-gray-500 transition-colors">Privacy</a>
                             <a href="#" className="hover:text-gray-500 transition-colors">Terms</a>
                         </div>
-                        <p className="text-[11px] font-bold text-gray-300">© 2024 OnlyCats Inc.</p>
+                        <p className="text-[11px] font-bold text-gray-300">© 2026 OnlyCats Inc.</p>
                     </div>
                 </aside>
 

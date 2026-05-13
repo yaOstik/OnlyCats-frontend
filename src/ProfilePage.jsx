@@ -148,13 +148,51 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
       normalizedProfile.followers_count = followersCount;
       normalizedProfile.following_count = followingCount;
 
+      // Backend route GET /profiles/{user_id} is public and may return
+      // is_followed_by_me without viewer context. Re-sync it using /profiles/search.
+      if (!isMe && normalizedProfile?.username) {
+        try {
+          const query = new URLSearchParams({
+            q: normalizedProfile.username,
+            skip: '0',
+            limit: '50',
+          });
+          const followStateResponse = await fetch(`${BASE_URL}/profiles/search?${query.toString()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (followStateResponse.ok) {
+            const users = await followStateResponse.json();
+            const exactUser = Array.isArray(users)
+              ? users.find((item) => String(item.user_id) === String(normalizedProfile.user_id))
+              : null;
+            if (exactUser) {
+              const parsedFollowed = parseBooleanFlag(exactUser.is_followed_by_me);
+              if (parsedFollowed !== null) {
+                normalizedProfile.is_followed_by_me = parsedFollowed;
+              }
+              normalizedProfile.followers_count = parseCount(
+                exactUser.followers_count ?? exactUser.followersCount,
+                normalizedProfile.followers_count,
+              );
+              normalizedProfile.following_count = parseCount(
+                exactUser.following_count ?? exactUser.followingCount,
+                normalizedProfile.following_count,
+              );
+            }
+          }
+        } catch {
+          // Keep base profile payload if search sync is unavailable.
+        }
+      }
+
       setProfile(normalizedProfile);
       if (normalizedProfile.can_edit) {
         setEditForm({ username: normalizedProfile.username || '', bio: normalizedProfile.bio || '' });
       }
 
       const localCover = localStorage.getItem(buildCoverStorageKey(normalizedProfile.user_id));
-      setCoverUrl(normalizedProfile.cover_url || localCover || '');
+      setCoverUrl(normalizedProfile.background_url || localCover || '');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -231,7 +269,7 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
 
       const updatedProfile = await response.json();
       updatedProfile.avatar_url = profile.avatar_url;
-      updatedProfile.cover_url = profile.cover_url;
+      updatedProfile.background_url = profile.background_url;
       setProfile(updatedProfile);
       localStorage.setItem('username', updatedProfile.username);
       setShowSettingsModal(false);
@@ -305,11 +343,7 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
 
       const attempts = [
         { endpoint: '/profiles/me/background', method: 'PUT', field: 'background' },
-        { endpoint: '/profiles/me/background', method: 'PUT', field: 'image' },
-        { endpoint: '/profiles/me/background', method: 'PUT', field: 'file' },
-        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'cover' },
-        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'image' },
-        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'file' },
+        { endpoint: '/profiles/me/background/', method: 'PUT', field: 'background' },
       ];
 
       let uploaded = false;
@@ -559,7 +593,7 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
                   : 'bg-[#d946ef] hover:bg-[#c026d3] text-white border border-[#c026d3]'
               } ${isFollowActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              {isFollowActionLoading ? 'Updating...' : profile.is_followed_by_me ? 'Following' : 'Follow'}
+              {isFollowActionLoading ? 'Updating...' : profile.is_followed_by_me ? 'Unfollow' : 'Follow'}
             </button>
           )}
         </div>
