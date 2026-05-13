@@ -31,6 +31,26 @@ function buildCoverStorageKey(userId) {
   return `onlycats.cover.${userId}`;
 }
 
+function parseBooleanFlag(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'followed', 'following'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'not_following', 'unfollowed'].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function parseCount(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChangeThemeMode, isDarkTheme }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +68,7 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
 
   const [coverUrl, setCoverUrl] = useState('');
   const [followListType, setFollowListType] = useState(null);
+  const [isFollowActionLoading, setIsFollowActionLoading] = useState(false);
 
   const getMyUserId = useCallback(() => {
     try {
@@ -85,38 +106,47 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
         normalizedProfile.avatar_url = `${cleanUrl}?t=${Date.now()}`;
       }
 
-      const followedByMe =
-        typeof normalizedProfile.is_followed_by_me === 'boolean'
-          ? normalizedProfile.is_followed_by_me
-          : typeof normalizedProfile.is_following === 'boolean'
-            ? normalizedProfile.is_following
-            : typeof normalizedProfile.following === 'boolean'
-              ? normalizedProfile.following
-              : typeof normalizedProfile.followed_by_me === 'boolean'
-                ? normalizedProfile.followed_by_me
-                : Array.isArray(normalizedProfile.followers) && myId
-                  ? normalizedProfile.followers.some((item) => {
-                      const followerId =
-                        item?.user_id ?? item?.id ?? item?.follower_id ?? item;
-                      return String(followerId) === String(myId);
-                    })
-                  : false;
+      const followCandidates = [
+        normalizedProfile.is_followed_by_me,
+        normalizedProfile.is_following,
+        normalizedProfile.following,
+        normalizedProfile.followed_by_me,
+        normalizedProfile.isFollowing,
+        normalizedProfile.following_by_me,
+        normalizedProfile.followingStatus,
+      ];
+      let followedByMe = null;
+      for (const candidate of followCandidates) {
+        const parsed = parseBooleanFlag(candidate);
+        if (parsed !== null) {
+          followedByMe = parsed;
+          break;
+        }
+      }
+      if (followedByMe === null && Array.isArray(normalizedProfile.followers) && myId) {
+        followedByMe = normalizedProfile.followers.some((item) => {
+          const followerId = item?.user_id ?? item?.id ?? item?.follower_id ?? item;
+          return String(followerId) === String(myId);
+        });
+      }
 
-      const followersCount = Number(
+      const followersCount = parseCount(
         normalizedProfile.followers_count ??
           normalizedProfile.followersCount ??
           (Array.isArray(normalizedProfile.followers) ? normalizedProfile.followers.length : 0),
+        0,
       );
 
-      const followingCount = Number(
+      const followingCount = parseCount(
         normalizedProfile.following_count ??
           normalizedProfile.followingCount ??
           (Array.isArray(normalizedProfile.following) ? normalizedProfile.following.length : 0),
+        0,
       );
 
-      normalizedProfile.is_followed_by_me = followedByMe;
-      normalizedProfile.followers_count = Number.isNaN(followersCount) ? 0 : followersCount;
-      normalizedProfile.following_count = Number.isNaN(followingCount) ? 0 : followingCount;
+      normalizedProfile.is_followed_by_me = followedByMe ?? false;
+      normalizedProfile.followers_count = followersCount;
+      normalizedProfile.following_count = followingCount;
 
       setProfile(normalizedProfile);
       if (normalizedProfile.can_edit) {
@@ -124,7 +154,7 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
       }
 
       const localCover = localStorage.getItem(buildCoverStorageKey(normalizedProfile.user_id));
-      setCoverUrl(localCover || normalizedProfile.cover_url || '');
+      setCoverUrl(normalizedProfile.cover_url || localCover || '');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -137,8 +167,12 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
   }, [fetchProfile]);
 
   const handleFollowToggle = async () => {
+    if (!profile || isFollowActionLoading) return;
+    setIsFollowActionLoading(true);
+
     try {
       const token = localStorage.getItem('token')?.replace(/"/g, '');
+      if (!token) throw new Error('Please log in first.');
       const method = profile.is_followed_by_me ? 'DELETE' : 'POST';
 
       setProfile((prev) => ({
@@ -156,24 +190,23 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
       if (!response.ok) throw new Error('Failed to follow/unfollow.');
 
       const data = await response.json();
+      const responseFollowing =
+        parseBooleanFlag(data.following) ??
+        parseBooleanFlag(data.is_followed_by_me) ??
+        parseBooleanFlag(data.isFollowing) ??
+        parseBooleanFlag(data.followed_by_me);
+
       setProfile((prev) => ({
         ...prev,
-        is_followed_by_me:
-          typeof data.following === 'boolean'
-            ? data.following
-            : typeof data.is_followed_by_me === 'boolean'
-              ? data.is_followed_by_me
-              : prev.is_followed_by_me,
-        followers_count: Number.isNaN(Number(data.followers_count ?? data.followersCount))
-          ? Number(prev.followers_count) || 0
-          : Number(data.followers_count ?? data.followersCount),
-        following_count: Number.isNaN(Number(data.following_count ?? data.followingCount))
-          ? Number(prev.following_count) || 0
-          : Number(data.following_count ?? data.followingCount),
+        is_followed_by_me: responseFollowing ?? prev.is_followed_by_me,
+        followers_count: parseCount(data.followers_count ?? data.followersCount, Number(prev.followers_count) || 0),
+        following_count: parseCount(data.following_count ?? data.followingCount, Number(prev.following_count) || 0),
       }));
     } catch (followError) {
       alert(followError.message);
       fetchProfile();
+    } finally {
+      setIsFollowActionLoading(false);
     }
   };
 
@@ -259,28 +292,74 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
   const handleCoverSelected = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !profile?.can_edit) return;
+    const storageKey = buildCoverStorageKey(profile.user_id);
+    const previousCoverUrl = coverUrl;
 
     try {
       const dataUrl = await readFileAsDataUrl(file);
       setCoverUrl(dataUrl);
-      localStorage.setItem(buildCoverStorageKey(profile.user_id), dataUrl);
+      localStorage.setItem(storageKey, dataUrl);
 
       const token = localStorage.getItem('token')?.replace(/"/g, '');
-      const formData = new FormData();
-      formData.append('background', file);
+      if (!token) throw new Error('Please log in first.');
 
-      const endpoints = ['/profiles/me/background', '/profiles/me/cover'];
-      for (const endpoint of endpoints) {
-        const response = await fetch(`${BASE_URL}${endpoint}`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (response.ok) break;
-        if (response.status !== 404) break;
+      const attempts = [
+        { endpoint: '/profiles/me/background', method: 'PUT', field: 'background' },
+        { endpoint: '/profiles/me/background', method: 'PUT', field: 'image' },
+        { endpoint: '/profiles/me/background', method: 'PUT', field: 'file' },
+        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'cover' },
+        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'image' },
+        { endpoint: '/profiles/me/cover', method: 'PUT', field: 'file' },
+      ];
+
+      let uploaded = false;
+      let lastMessage = 'Failed to update profile background.';
+
+      for (const attempt of attempts) {
+        try {
+          const formData = new FormData();
+          formData.append(attempt.field, file);
+          const response = await fetch(`${BASE_URL}${attempt.endpoint}`, {
+            method: attempt.method,
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+
+          if (response.ok) {
+            uploaded = true;
+            break;
+          }
+
+          let detail = '';
+          try {
+            const errorBody = await response.json();
+            detail = errorBody?.detail || errorBody?.message || '';
+          } catch {
+            detail = '';
+          }
+
+          lastMessage = detail || `Upload failed (${response.status}) on ${attempt.endpoint}`;
+
+          if (response.status === 401 || response.status === 403) {
+            break;
+          }
+        } catch (attemptError) {
+          lastMessage = attemptError.message || lastMessage;
+        }
+      }
+
+      if (!uploaded) {
+        throw new Error(lastMessage);
       }
     } catch (coverError) {
+      setCoverUrl(previousCoverUrl || '');
+      if (previousCoverUrl) {
+        localStorage.setItem(storageKey, previousCoverUrl);
+      } else {
+        localStorage.removeItem(storageKey);
+      }
       alert(coverError.message || 'Failed to update profile background.');
+      fetchProfile();
     } finally {
       if (coverInputRef.current) coverInputRef.current.value = '';
     }
@@ -473,13 +552,14 @@ export default function ProfilePage({ BASE_URL, targetUserId, themeMode, onChang
           ) : (
             <button
               onClick={handleFollowToggle}
+              disabled={isFollowActionLoading}
               className={`font-bold text-[14px] px-6 py-2.5 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2 ${
                 profile.is_followed_by_me
                   ? 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-200'
                   : 'bg-[#d946ef] hover:bg-[#c026d3] text-white border border-[#c026d3]'
-              }`}
+              } ${isFollowActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              {profile.is_followed_by_me ? 'Following' : 'Follow'}
+              {isFollowActionLoading ? 'Updating...' : profile.is_followed_by_me ? 'Following' : 'Follow'}
             </button>
           )}
         </div>
